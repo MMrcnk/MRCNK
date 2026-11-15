@@ -410,12 +410,13 @@ function HealthGrid({ date }) {
   const addW = (ml) => L.setDay(date, { waterMl: Math.max(0, water + ml) });
   return html`<div class="g2">
     <div class="card green tight">
-      <div class="row between"><div class="lbl c-green">Woda</div><button type="button" class="xs" style="color:var(--green-mut)" onClick=${() => addW(-250)} aria-label="Odejmij 250 ml">−250</button></div>
+      <div class="lbl c-green">Woda</div>
       <div class="n" style="font-size:30px;line-height:1">${fmt1(water / 1000)}<span style="font-size:16px;color:var(--green-mut)"> / ${fmt1(s.waterTarget / 1000)} l</span></div>
       <${Bar} pct=${water / s.waterTarget} color="var(--green)" bg="#1C2E26" />
-      <div class="g2" style="gap:6px">
-        <button type="button" class="btn sm" style="background:var(--green-card);border:1px solid var(--green-line);color:var(--green)" onClick=${() => addW(250)}>+250</button>
-        <button type="button" class="btn sm" style="background:var(--green-card);border:1px solid var(--green-line);color:var(--green)" onClick=${() => addW(500)}>+500</button>
+      <div class="g3" style="gap:6px">
+        <button type="button" class="btn sm" style="padding:0;background:transparent;border:1px solid var(--green-line);color:var(--green-mut)" disabled=${!water} onClick=${() => addW(-250)} aria-label="Odejmij 250 ml">−250</button>
+        <button type="button" class="btn sm" style="padding:0;background:var(--green-card);border:1px solid var(--green-line);color:var(--green)" onClick=${() => addW(250)}>+250</button>
+        <button type="button" class="btn sm" style="padding:0;background:var(--green-card);border:1px solid var(--green-line);color:var(--green)" onClick=${() => addW(500)}>+500</button>
       </div>
     </div>
     <div class="card green tight">
@@ -430,14 +431,6 @@ function HealthGrid({ date }) {
       <div class="row wrap" style="gap:8px">
         ${sups.length ? sups.map((sp) => { const on = !!(d.supps || {})[sp.id]; return html`<button type="button" class=${'pill' + (on ? ' on' : '')} style=${on ? 'background:var(--green);color:var(--green-ink)' : 'border-color:#2A4A3C;color:#CFE3D8'} onClick=${() => L.setDayDeep(date, 'supps', sp.id, !on)} aria-pressed=${on}>${on ? html`<${Icon} n="check" s=${14} w=${3} />` : null}${sp.name}</button>`; }) : html`<button type="button" class="small mut" onClick=${() => nav.push('supplements')}>Dodaj suplementy w Więcej → Dieta</button>`}
       </div>
-    </div>
-    <div class="card green tight span2">
-      <div class="row between">
-        <div class="lbl c-green">Sen</div>
-        <div class="row" style="gap:6px"><div style="width:78px"><${NumIn} value=${d.sleepH} placeholder="h" onCommit=${(v) => L.setDay(date, { sleepH: v })} style="text-align:center;padding:8px" /></div><span class="small mut">h</span></div>
-      </div>
-      <div class="xs mut">Jakość snu</div>
-      <${Rating} value=${d.sleepQ} onChange=${(v) => L.setDay(date, { sleepQ: v })} />
     </div>
   </div>`;
 }

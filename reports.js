@@ -126,7 +126,6 @@ export function Report({ cur, prev, kind, p }) {
         <div><span class="mut">Waga śr.:</span> ${cur.weightAvg != null ? fmt1(cur.weightAvg) + ' kg' : '–'}</div>
         <div><span class="mut">Kalorie śr.:</span> ${cur.kcalAvg != null ? fmt0(cur.kcalAvg) + ' / ' + s.kcalTarget : '–'}</div>
         <div><span class="mut">Woda ≥ cel:</span> ${cur.waterOkDays}/${cur.days} dni</div>
-        <div><span class="mut">Sen śr.:</span> ${cur.sleepAvg != null ? fmt1(cur.sleepAvg) + ' h' : '–'}${cur.sleepQ != null ? ' · ' + fmt1(cur.sleepQ) + '/5' : ''}</div>
         <div><span class="mut">Energia:</span> ${fmt1(cur.energy)}/5</div>
         <div><span class="mut">Nastrój:</span> ${fmt1(cur.mood)}/5</div>
         <div><span class="mut">Zmęczenie:</span> ${fmt1(cur.fatigue)}/5</div>
@@ -167,7 +166,6 @@ function Compare() {
     ['Rekordy', A.prs.length, B.prs.length, fmt0],
     ['Waga śr. kg', A.weightAvg, B.weightAvg, fmt1],
     ['Kalorie śr.', A.kcalAvg, B.kcalAvg, fmt0],
-    ['Sen śr. h', A.sleepAvg, B.sleepAvg, fmt1],
     ['Energia /5', A.energy, B.energy, fmt1],
     ['Pobudki 1 budzik', A.wakeOk, B.wakeOk, fmt0],
   ];

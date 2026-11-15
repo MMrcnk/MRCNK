@@ -72,7 +72,6 @@ export function CalendarTab() {
           <div><span class="mut">Waga:</span> ${st.weight != null ? fmt1(st.weight) + ' kg' : '–'}</div>
           <div><span class="mut">Kalorie:</span> ${st.kcal ? fmt0(st.kcal) : '–'}</div>
           <div><span class="mut">Woda:</span> ${st.water ? fmt1(st.water / 1000) + ' l' : '–'}</div>
-          <div><span class="mut">Sen:</span> ${d.sleepH != null ? fmt1(d.sleepH) + ' h' : '–'}${d.sleepQ ? ' · ' + d.sleepQ + '/5' : ''}</div>
           <div><span class="mut">Suple:</span> ${Object.values(d.supps || {}).filter(Boolean).length}/${L.supplements().length}</div>
         </div>` : null}
       ${slots.length ? html`<div class="col" style="gap:4px"><div class="lbl c-red">Treningi</div>${slots.map((sl) => { const ss = L.sessionFor(sel, sl.key); return html`<div class="small">${sl.label}: ${sl.name} ${ss ? html`<span class=${ss.status === 'done' ? 'up' : 'down'}>· ${ss.status === 'done' ? 'wykonany' : ss.status === 'skipped' ? 'pominięty' : 'w trakcie'}</span>` : ''}</div>`; })}</div>` : null}
