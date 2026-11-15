@@ -6,6 +6,7 @@ import * as sync from './sync.js';
 import { deviceId } from './focus.js';
 
 const { fmt1, fmt0 } = L;
+export const APP_VERSION = '4';
 export const VAPID_PUBLIC_DEFAULT = 'BGU7QEoTnv3OuK2L6q7h-OIr1oCrUyNH0vJPp2U6IIx_co5tbJRHMxmnYJan7n_Rl6Q2KC9f_7XSYM3IYKxvqV0';
 
 export function MoreTab() {
@@ -30,6 +31,7 @@ export function MoreTab() {
         <span style=${'color:' + c}><${Icon} n=${ic} /></span><span class="grow" style="font-weight:500">${l}</span><${Icon} n="next" s=${18} /></button>`)}
     </div>
     <${SyncBadge} />
+    <div class="xs mut3" style="text-align:center">wersja ${APP_VERSION}</div>
   </div>`;
 }
 

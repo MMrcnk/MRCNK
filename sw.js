@@ -1,5 +1,5 @@
 // MRCNK – service worker: offline + powiadomienia push
-const CACHE = 'mrcnk-v3';
+const CACHE = 'mrcnk-v4';
 const FILES = [
   './', 'index.html', 'styles.css', 'manifest.json', 'app.js', 'ui.js', 'db.js', 'sync.js', 'logic.js', 'today.js', 'focus.js', 'training.js', 'calendar.js', 'reports.js', 'more.js', 'chat.js',
   'preact.js', 'supabase.js', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png',
@@ -7,7 +7,7 @@ const FILES = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
@@ -19,7 +19,7 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== location.origin) return;
   // sieć najpierw (świeża wersja), cache gdy offline
   e.respondWith(
-    fetch(req).then((res) => {
+    fetch(req, { cache: 'no-cache' }).then((res) => {
       if (res && res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
       return res;
     }).catch(() => caches.match(req, { ignoreSearch: true }).then((r) => r || caches.match('index.html')))
