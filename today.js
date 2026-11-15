@@ -400,26 +400,45 @@ function DaySlotsSheet({ close, date }) {
 }
 
 // ---------- zdrowie ----------
+// ilość: wartość do 10 traktowana jako litry (0,5 = 500 ml)
+const toMl = (v) => (v == null ? null : v <= 10 ? Math.round(v * 1000) : Math.round(v));
+
+export function WaterCard({ date, onDone }) {
+  const s = L.settings();
+  const water = L.waterOn(date);
+  const [v, setV] = useState('');
+  const ml = toMl(L.num(v));
+  const apply = (mode) => {
+    if (!ml || ml <= 0) { toast('Wpisz ilość, np. 700 albo 0,7'); return; }
+    const next = mode === 'set' ? ml : Math.max(0, water + (mode === 'add' ? ml : -ml));
+    L.setDay(date, { waterMl: next });
+    toast(mode === 'set' ? `Woda: ${fmt1(next / 1000)} l` : `${mode === 'add' ? '+' : '−'}${ml} ml`);
+    setV('');
+    if (onDone) onDone();
+  };
+  const B = 'padding:0;border:1px solid var(--green-line);';
+  return html`<div class="card green tight span2">
+    <div class="row between"><div class="lbl c-green">Woda</div><div class="n" style="font-size:30px;line-height:1">${fmt1(water / 1000)}<span style="font-size:16px;color:var(--green-mut)"> / ${fmt1(s.waterTarget / 1000)} l</span></div></div>
+    <${Bar} pct=${water / s.waterTarget} color="var(--green)" bg="#1C2E26" />
+    <div class="row" style="gap:6px">
+      <input type="text" inputmode="decimal" placeholder="ml, np. 700" value=${v} onInput=${(e) => setV(e.target.value)} onKeyDown=${(e) => { if (e.key === 'Enter') apply('add'); }} style="flex:1;min-width:0;text-align:center" aria-label="Ilość wody" />
+      <button type="button" class="btn sm" style=${B + 'width:48px;background:transparent;color:var(--green-mut)'} aria-label="Odejmij wodę" onClick=${() => apply('sub')}><${Icon} n="minus" s=${18} /></button>
+      <button type="button" class="btn sm" style=${B + 'width:48px;background:var(--green-card);color:var(--green)'} aria-label="Dodaj wodę" onClick=${() => apply('add')}><${Icon} n="plus" s=${18} /></button>
+      <button type="button" class="btn sm" style=${B + 'width:68px;background:transparent;color:var(--green-mut);font-size:13px'} onClick=${() => apply('set')}>Ustaw</button>
+    </div>
+    <div class="xs" style="color:var(--green-mut)">+ dodaje · − odejmuje · Ustaw wpisuje dzienną sumę. Do 10 = litry (0,5 = 500 ml).</div>
+  </div>`;
+}
+
 function HealthGrid({ date }) {
   const s = L.settings();
   const d = L.day(date);
-  const water = L.waterOn(date);
   const kcal = L.kcalOn(date);
   const mac = L.macrosOn(date);
   const sups = L.supplements();
-  const addW = (ml) => L.setDay(date, { waterMl: Math.max(0, water + ml) });
   return html`<div class="g2">
-    <div class="card green tight">
-      <div class="lbl c-green">Woda</div>
-      <div class="n" style="font-size:30px;line-height:1">${fmt1(water / 1000)}<span style="font-size:16px;color:var(--green-mut)"> / ${fmt1(s.waterTarget / 1000)} l</span></div>
-      <${Bar} pct=${water / s.waterTarget} color="var(--green)" bg="#1C2E26" />
-      <div class="g3" style="gap:6px">
-        <button type="button" class="btn sm" style="padding:0;background:transparent;border:1px solid var(--green-line);color:var(--green-mut)" disabled=${!water} onClick=${() => addW(-250)} aria-label="Odejmij 250 ml">−250</button>
-        <button type="button" class="btn sm" style="padding:0;background:var(--green-card);border:1px solid var(--green-line);color:var(--green)" onClick=${() => addW(250)}>+250</button>
-        <button type="button" class="btn sm" style="padding:0;background:var(--green-card);border:1px solid var(--green-line);color:var(--green)" onClick=${() => addW(500)}>+500</button>
-      </div>
-    </div>
-    <div class="card green tight">
+    <${WaterCard} date=${date} />
+    <div class="card green tight span2">
       <div class="row between"><div class="lbl c-green">Kalorie</div><button type="button" class="xs" style="color:var(--green-mut)" onClick=${() => nav.push('diet', { date })}>lista</button></div>
       <div class="n" style="font-size:30px;line-height:1">${fmt0(kcal)}<span style="font-size:16px;color:var(--green-mut)"> / ${s.kcalTarget}</span></div>
       <${Bar} pct=${kcal / s.kcalTarget} color="var(--green)" bg="#1C2E26" />
@@ -477,6 +496,7 @@ export function QuickAdd({ close }) {
     <textarea autoFocus value=${v} onInput=${(e) => setV(e.target.value)} placeholder="Przemyślenie, pomysł, obserwacja…"></textarea>
     <button type="button" class="btn lg full b-acc" disabled=${!v.trim()} onClick=${() => { db.patch('note', null, { text: v.trim(), at: Date.now(), date }); toast('Zapisano notatkę'); close(); }}>Zapisz</button></div>`;
   if (mode === 'kcal') return html`<${KcalSheet} close=${close} date=${date} />`;
+  if (mode === 'water') return html`<div class="col"><div class="grab"></div><${WaterCard} date=${date} onDone=${close} /></div>`;
   const T = (m, icon, label, color, fn) => html`<button type="button" class="card tight" style="align-items:flex-start;text-align:left" onClick=${fn || (() => setMode(m))}><span style=${'color:' + color}><${Icon} n=${icon} /></span><span style="font-weight:600">${label}</span></button>`;
   return html`<div class="col">
     <div class="grab"></div>
@@ -485,7 +505,7 @@ export function QuickAdd({ close }) {
       ${T('weight', 'scale', 'Waga', 'var(--acc)')}
       ${T('kcal', 'fork', 'Kalorie', 'var(--green)')}
       ${T('task', 'list', 'Zadanie', 'var(--blue)')}
-      ${T('water', 'drop', 'Woda +250 ml', 'var(--green)', () => { L.setDay(date, { waterMl: L.waterOn(date) + 250 }); toast('+250 ml'); close(); })}
+      ${T('water', 'drop', 'Woda', 'var(--green)')}
       ${T('note', 'note', 'Notatka', 'var(--gold)')}
       ${T('focus', 'clock', 'Deep Work', 'var(--blue)', () => { close(); nav.push('focusSetup', { date }); })}
     </div>

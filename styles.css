@@ -17,7 +17,7 @@
   --green:#3DDC84;--green-bg:#10191A;--green-line:#1E3A30;--green-card:#142620;--green-mut:#8FB8A4;--green-ink:#08140E;
   --safe-b:env(safe-area-inset-bottom,0px);--safe-t:env(safe-area-inset-top,0px);
 }
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 html,body{margin:0;background:var(--bg);color:var(--txt);font-family:Inter,system-ui,sans-serif;font-size:16px;-webkit-font-smoothing:antialiased;overscroll-behavior-y:none}
 body{min-height:100vh}
 button,input,textarea,select{font-family:inherit;font-size:16px;color:inherit}
