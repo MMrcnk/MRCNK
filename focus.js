@@ -141,11 +141,15 @@ function FocusRun({ id }) {
     db.patch('focus', f.id, { doneIds: [...dn] });
   };
   const pause = () => {
-    if (f.pausedAt) db.patch('focus', f.id, { pausedMs: (f.pausedMs || 0) + Date.now() - f.pausedAt, pausedAt: null });
-    else db.patch('focus', f.id, { pausedAt: Date.now(), pauses: (f.pauses || 0) + 1 });
+    if (f.pausedAt) {
+      const ms = Date.now() - f.pausedAt;
+      const log = [...(f.pauseLog || [])];
+      if (log.length && !log[log.length - 1].ms) log[log.length - 1] = { ...log[log.length - 1], ms };
+      db.patch('focus', f.id, { pausedMs: (f.pausedMs || 0) + ms, pausedAt: null, pauseLog: log });
+    } else nav.sheet(PauseSheet, { id: f.id });
   };
   const finish = () => {
-    if (f.pausedAt) db.patch('focus', f.id, { pausedMs: (f.pausedMs || 0) + Date.now() - f.pausedAt, pausedAt: null });
+    if (f.pausedAt) pause();
     if (left > 0.05) { nav.sheet(EndEarlySheet, { id: f.id }); return; }
     db.patch('focus', f.id, { status: 'done', end: Date.now() });
     L.keepAwake(false); L.beep(1);
@@ -175,6 +179,27 @@ function FocusRun({ id }) {
 }
 registerScreen('focusRun', FocusRun);
 const fmtClock = (min) => { const s = Math.max(0, Math.round(min * 60)); return `${Math.floor(s / 60)}:${L.pad(s % 60)}`; };
+
+function PauseSheet({ close, id }) {
+  const f = db.get(id);
+  const [reason, setReason] = useState('');
+  const go = () => {
+    const now = Date.now();
+    db.patch('focus', id, { pausedAt: now, pauses: (f.pauses || 0) + 1, pauseLog: [...(f.pauseLog || []), { at: now, reason: reason.trim(), ms: null }] });
+    close();
+  };
+  return html`<div class="col">
+    <div class="grab"></div>
+    <div class="h" style="font-size:24px">Pauza</div>
+    <div class="small mut">Po ${fmt0(L.focusMin(f))} min. Dlaczego przerywasz? Bez powodu pauza się nie włączy.</div>
+    <textarea autoFocus value=${reason} onInput=${(e) => setReason(e.target.value)} placeholder="Powód pauzy…"></textarea>
+    <div class="row wrap" style="gap:6px">${['telefon', 'klient dzwoni', 'toaleta', 'jedzenie', 'ktoś przeszkodził', 'zmęczenie'].map((r) => html`<button type="button" class="chip" onClick=${() => setReason(r)}>${r}</button>`)}</div>
+    <div class="g2">
+      <button type="button" class="btn lg b-ghost" onClick=${close}>Wracam do pracy</button>
+      <button type="button" class="btn lg b-acc" disabled=${!reason.trim()} onClick=${go}>Pauza</button>
+    </div>
+  </div>`;
+}
 
 function EndEarlySheet({ close, id }) {
   const f = db.get(id);
@@ -255,6 +280,7 @@ function FocusHistory() {
         <div class="col grow" style="gap:2px">
           <div style="font-weight:600">${L.fmtShort(f.date)} · ${L.hm(f.start)} · ${fmt0(L.focusMin(f))} / ${f.plannedMin} min</div>
           <div class="xs mut">${(f.taskIds || []).length} zadań · zrobione ${(f.doneIds || []).length}${f.projectId ? ' · ' + (db.get(f.projectId)?.name || '') : ''}${(f.exits || []).length ? ' · wyjścia ' + f.exits.length : ''}</div>
+          ${(f.pauseLog || []).length ? html`<div class="xs c-amb">Pauzy: ${f.pauseLog.map((p) => p.reason + (p.ms ? ' (' + Math.max(1, Math.round(p.ms / 60000)) + ' min)' : '')).join(', ')}</div>` : null}
           ${f.status === 'interrupted' ? html`<div class="xs c-red">Przerwana${f.interruptedBy === 'exit' ? ' (wyjście z aplikacji)' : ''}: ${f.reason || 'brak powodu'}</div>` : null}
         </div>
         <span class="chip" style=${f.status === 'done' ? 'color:var(--green)' : 'color:var(--red)'}>${f.status === 'done' ? 'pełna' : 'przerwana'}</span>

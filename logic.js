@@ -351,6 +351,8 @@ export function periodStats(from, to) {
   const interrupted = focus.filter((f) => f.status === 'interrupted');
   const reasons = {};
   interrupted.forEach((f) => { const r = (f.reason || 'bez powodu').trim().toLowerCase(); reasons[r] = (reasons[r] || 0) + 1; });
+  const pauseReasons = {};
+  focus.forEach((f) => (f.pauseLog || []).forEach((p) => { const r = (p.reason || 'bez powodu').trim().toLowerCase(); pauseReasons[r] = (pauseReasons[r] || 0) + 1; }));
   const byProject = {};
   focus.forEach((f) => { const p = f.projectId ? (db.get(f.projectId)?.name || 'Projekt') : 'Bez projektu'; byProject[p] = (byProject[p] || 0) + focusMin(f); });
   const tasks = days.flatMap(tasksOn);
@@ -369,7 +371,7 @@ export function periodStats(from, to) {
   return {
     from, to, days: days.length,
     dekalogAvg: avg(scores), dekalogFull: scores.filter((x) => x === rules.length).length, ruleRate,
-    focusMin: focusMinTotal, focusSessions: focus.length, focusDone: focus.filter((f) => f.status === 'done').length, interrupted: interrupted.length, reasons, byProject,
+    focusMin: focusMinTotal, pauseReasons, pauses: sum(focus.map((f) => (f.pauseLog || []).length)), focusSessions: focus.length, focusDone: focus.filter((f) => f.status === 'done').length, interrupted: interrupted.length, reasons, byProject,
     tasksPlanned: tasks.length, tasksDone: tasks.filter((t) => t.done).length, moved,
     slotsPlanned: slots.length, slotsDone: slots.filter((x) => x.s && x.s.status === 'done').length, slotsSkipped: slots.filter((x) => x.s && x.s.status === 'skipped').length,
     sessions: sessions.length, load, prs,
@@ -397,6 +399,8 @@ export function factInsights(cur, prev) {
   const worst = [...cur.ruleRate].filter((r) => r.of > 0).sort((a, b) => a.pct - b.pct)[0];
   if (worst && worst.pct < 1) out.push({ kind: 'problem', text: `Najsłabsza zasada dekalogu: „${worst.rule.short}” – ${worst.done}/${worst.of} dni.` });
   const topReason = Object.entries(cur.reasons).sort((a, b) => b[1] - a[1])[0];
+  const topPause = Object.entries(cur.pauseReasons || {}).sort((a, b) => b[1] - a[1])[0];
+  if (topPause && topPause[1] >= 3) out.push({ kind: 'problem', text: `Najczęstszy powód pauzy w Deep Work: „${topPause[0]}” (${topPause[1]}×).` });
   if (topReason && topReason[1] >= 2) out.push({ kind: 'problem', text: `Najczęstszy powód przerwania Deep Work: „${topReason[0]}” (${topReason[1]}×).` });
   if (cur.slotsPlanned && cur.slotsDone < cur.slotsPlanned) out.push({ kind: 'minus', text: `Treningi: ${cur.slotsDone}/${cur.slotsPlanned} wykonanych.` });
   if (cur.tasksPlanned && cur.tasksDone / cur.tasksPlanned < 0.8) out.push({ kind: 'minus', text: `Zadania biznes: ${cur.tasksDone}/${cur.tasksPlanned} (${Math.round((cur.tasksDone / cur.tasksPlanned) * 100)}%).` });

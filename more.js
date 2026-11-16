@@ -6,7 +6,7 @@ import * as sync from './sync.js';
 import { deviceId } from './focus.js';
 
 const { fmt1, fmt0 } = L;
-export const APP_VERSION = '5';
+export const APP_VERSION = '6';
 export const VAPID_PUBLIC_DEFAULT = 'BGU7QEoTnv3OuK2L6q7h-OIr1oCrUyNH0vJPp2U6IIx_co5tbJRHMxmnYJan7n_Rl6Q2KC9f_7XSYM3IYKxvqV0';
 
 export function MoreTab() {
