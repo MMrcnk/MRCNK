@@ -6,7 +6,7 @@ import * as sync from './sync.js';
 import { deviceId } from './focus.js';
 
 const { fmt1, fmt0 } = L;
-export const APP_VERSION = '4';
+export const APP_VERSION = '5';
 export const VAPID_PUBLIC_DEFAULT = 'BGU7QEoTnv3OuK2L6q7h-OIr1oCrUyNH0vJPp2U6IIx_co5tbJRHMxmnYJan7n_Rl6Q2KC9f_7XSYM3IYKxvqV0';
 
 export function MoreTab() {
@@ -344,7 +344,11 @@ function SettingsScreen() {
         <${Field} label="Koniec dnia o (h)" hint="Analiza po północy trafia do właściwego dnia"><${NumIn} value=${s.dayBoundaryHour} onCommit=${set('dayBoundaryHour')} /></${Field}>
         <${Field} label="Medytacja (min)"><${NumIn} value=${s.meditationMin} onCommit=${set('meditationMin')} /></${Field}>
         <${Field} label="Sesja Deep Work (min)"><${NumIn} value=${s.focusDefaultMin} onCommit=${set('focusDefaultMin')} /></${Field}>
-        <${Field} label="Łaska przy wyjściu (s)"><${NumIn} value=${s.graceSec} onCommit=${set('graceSec')} /></${Field}>
+        ${s.strictExit ? html`<${Field} label="Łaska przy wyjściu (s)"><${NumIn} value=${s.graceSec} onCommit=${set('graceSec')} /></${Field}>` : null}
+      </div>
+      <div class="li" style="border:none">
+        <${Check} on=${s.strictExit} onClick=${() => L.setSettings({ strictExit: !s.strictExit })} label="Blokada wyjścia" />
+        <div class="grow col" style="gap:2px"><div>Deep Work: wyjście z aplikacji przerywa sesję</div><div class="xs mut">Wyłączone = możesz używać telefonu, WhatsAppa itd., timer liczy dalej</div></div>
       </div></div>
     <div class="card"><div class="ctitle">Poranna rutyna</div>
       ${morning.map((m, i) => html`<div class="row" style="gap:6px">

@@ -31,7 +31,9 @@ function onShow() {
   const f = db.get(h.id);
   if (!f || f.status !== 'running' || f.pausedAt) return;
   const gap = Date.now() - h.at;
-  const grace = (L.settings().graceSec || 15) * 1000;
+  const st = L.settings();
+  const grace = (st.graceSec || 15) * 1000;
+  if (!st.strictExit) { db.patch('focus', f.id, { exits: [...(f.exits || []), { at: h.at, ms: gap }] }); return; }
   if (gap <= grace) {
     db.patch('focus', f.id, { exits: [...(f.exits || []), { at: h.at, ms: gap }] });
     toast(`Wróciłeś po ${Math.round(gap / 1000)} s – sesja trwa.`);
@@ -49,7 +51,7 @@ export function initFocusGuard() {
     else {
       let b = null; try { b = JSON.parse(localStorage.getItem('mrcnk_beat') || 'null'); } catch {}
       const grace = (L.settings().graceSec || 15) * 1000;
-      if (b && b.id === f.id && Date.now() - b.at > grace) interrupt(f, b.at, 'exit');
+      if (L.settings().strictExit && b && b.id === f.id && Date.now() - b.at > grace) interrupt(f, b.at, 'exit');
     }
   }
   document.addEventListener('visibilitychange', () => (document.hidden ? onHide() : onShow()));
@@ -113,7 +115,7 @@ function FocusSetup({ date }) {
       ${projects.length ? html`<${Field} label="Projekt (opcjonalnie)"><select value=${proj} onChange=${(e) => setProj(e.target.value)}><option value="">— bez projektu —</option>${projects.map((p) => html`<option value=${p.id}>${p.name}</option>`)}</select></${Field}>` : null}
       <button type="button" class="xs mut2" style="align-self:flex-start" onClick=${() => nav.push('projects')}>Zarządzaj projektami →</button>
     </div>
-    <div class="card acc"><div class="small" style="line-height:1.45"><b class="c-acc">Zasada sesji:</b> wyjście z aplikacji na dłużej niż ${s.graceSec} s przerywa sesję. Przerwanie wymaga wpisania powodu i zostaje zapisane.</div></div>
+    <div class="card acc"><div class="small" style="line-height:1.45">${s.strictExit ? html`<b class="c-acc">Zasada sesji:</b> wyjście z aplikacji na dłużej niż ${s.graceSec} s przerywa sesję. Przerwanie wymaga wpisania powodu i zostaje zapisane.` : html`<b class="c-acc">Zasada sesji:</b> możesz korzystać z telefonu i innych aplikacji – timer liczy dalej. Przerwanie przed końcem wymaga wpisania powodu.`}</div></div>
     <button type="button" class="btn lg full b-blue" style="height:60px" disabled=${!sel.length} onClick=${start}><${Icon} n="play" s=${18} />Start · ${min} min</button>
     ${!sel.length ? html`<div class="xs mut2" style="text-align:center">Dodaj co najmniej jedno zadanie – zasada 2 dekalogu.</div>` : null}
   </div>`;
@@ -152,7 +154,7 @@ function FocusRun({ id }) {
   if (f.status !== 'running') return html`<${FocusDone} id=${id} />`;
   const pct = el / f.plannedMin;
   return html`<div class="page" style="min-height:100vh">
-    <${Head} title="Deep Work" sub=${f.pausedAt ? 'PAUZA' : 'Sesja trwa · nie wychodź z aplikacji'} />
+    <${Head} title="Deep Work" sub=${f.pausedAt ? 'PAUZA' : L.settings().strictExit ? 'Sesja trwa · nie wychodź z aplikacji' : 'Sesja trwa · timer liczy też poza aplikacją'} />
     <div class="card blue" style="align-items:center;text-align:center;padding:28px 16px">
       <div class="big" style=${left <= 0 ? 'color:var(--green)' : ''}>${left > 0 ? fmtClock(left) : '+' + fmtClock(-left)}</div>
       <div class="small" style="color:var(--blue-mut)">${left > 0 ? 'zostało' : 'ponad plan'} · upłynęło ${fmtClock(el)} z ${f.plannedMin} min</div>

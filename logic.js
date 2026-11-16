@@ -61,6 +61,7 @@ export const SETTINGS_DEFAULT = {
   meditationMin: 5,
   focusDefaultMin: 90,
   graceSec: 15,
+  strictExit: false,
   weightTarget: 90,
   weightStart: 70.5,
   heightCm: 179,
