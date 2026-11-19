@@ -3,6 +3,7 @@ import { html, useState, useEffect, useRef, useDB, useTick, nav, toast, Icon, Ch
 import * as db from './db.js';
 import * as L from './logic.js';
 import { FocusEditSheet } from './focus.js';
+import { askAI } from './ai.js';
 
 const { fmt1, fmt0, fmtMin, fmtHM } = L;
 
@@ -582,6 +583,35 @@ export function dayStats(d) {
   };
 }
 
+
+function DayAI({ date }) {
+  const key = 'ai:day:' + date;
+  const ai = db.get(key);
+  const [busy, setBusy] = useState(false);
+  const run = async () => {
+    setBusy(true);
+    try {
+      const d = L.day(date);
+      const sc = L.dekalogScore(date);
+      const st = L.periodStats(L.addDays(date, -6), date);
+      const focus = L.focusOn(date).map((f) => ({ start: L.hm(f.start), min: Math.round(L.focusMin(f)), planned: f.plannedMin, status: f.status, reason: f.reason || null, pauses: (f.pauseLog || []).map((p) => p.reason) }));
+      const trainings = L.slotsOn(date).map((sl) => { const se = L.sessionFor(date, sl.key); return { name: sl.name, status: se ? se.status : 'niewykonany', reason: se && se.reason, prs: se && se.prs ? se.prs.map((p) => p.name) : [] }; });
+      const res = await askAI({ mode: 'day', date, today: dayStats(date), yesterday: dayStats(L.addDays(date, -1)),
+        dekalog: sc.rules.map((r, i) => ({ rule: r.short, ok: sc.states[i].ok })), focusSessions: focus, trainings,
+        tasks: L.tasksOn(date).map((t) => ({ title: t.title, done: !!t.done, moved: t.moved || 0 })),
+        evening: { top: d.top, bottom: d.bottom, tomorrow: d.tomorrow, energy: d.energy, mood: d.mood, fatigue: d.fatigue },
+        resolutionFromYesterday: { text: L.day(L.addDays(date, -1)).tomorrow || null, status: d.resolution || null },
+        last7: { dekalogAvg: st.dekalogAvg, focusMin: Math.round(st.focusMin), tasks: `${st.tasksDone}/${st.tasksPlanned}`, trainings: `${st.slotsDone}/${st.slotsPlanned}`, weightAvg: st.weightAvg, kcalAvg: st.kcalAvg } });
+      db.patch('ai', key, { text: res.text, at: Date.now() });
+    } catch (e) { toast(e.message); }
+    setBusy(false);
+  };
+  return html`<div class="card">
+    <div class="row between"><div class="lbl c-acc">Analiza AI</div><button type="button" class="btn sm b-acc" disabled=${busy} onClick=${run}>${busy ? 'Analizuję…' : ai ? 'Odśwież' : 'Analizuj dzień'}</button></div>
+    ${ai ? html`<div style="white-space:pre-wrap;font-size:15px;line-height:1.5">${ai.text}</div>` : html`<div class="small mut">Co zadziałało, co nie i 1–3 rzeczy na jutro – na podstawie Twoich danych.</div>`}
+  </div>`;
+}
+
 export function DayCard({ date }) {
   useDB();
   const s = L.settings();
@@ -622,6 +652,7 @@ export function DayCard({ date }) {
       ${d.top ? html`<div class="col" style="gap:4px"><div class="lbl c-green">Top G</div><div>${d.top}</div></div>` : null}
       ${d.bottom ? html`<div class="col" style="gap:4px"><div class="lbl c-red">Bottom G</div><div>${d.bottom}</div></div>` : null}
     </div>` : null}
+    <${DayAI} date=${date} />
     <div class="card acc">
       <div class="lbl c-acc">Jutro</div>
       ${d.tomorrow ? html`<div style="font-size:17px;font-weight:500">${d.tomorrow}</div>` : html`<div class="small mut">Brak postanowienia.</div>`}

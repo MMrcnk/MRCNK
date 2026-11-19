@@ -3,6 +3,7 @@ import { html, useState, useEffect, useRef, useDB, nav, toast, Icon, Head, regis
 import * as db from './db.js';
 import * as L from './logic.js';
 import * as sync from './sync.js';
+import { askAI, aiReady } from './ai.js';
 
 const { fmt1, fmt0, fmtHM } = L;
 
@@ -66,15 +67,15 @@ function Chat() {
     const text = txt.trim(); if (!text || busy) return;
     setTxt('');
     db.patch('chat', null, { role: 'user', text, at: Date.now() });
-    if (!sync.getUser()) {
+    if (!aiReady()) {
       db.patch('note', null, { text, at: Date.now(), date: L.todayKey(), source: 'chat' });
-      db.patch('chat', null, { role: 'ai', text: 'Zapisałem to jako notatkę. Żebym mógł odpowiadać i zmieniać dane, połącz konto i funkcję AI (Więcej → Konto).', at: Date.now() + 1 });
+      db.patch('chat', null, { role: 'ai', text: 'Zapisałem to jako notatkę. Żebym mógł odpowiadać i zmieniać dane, wklej klucz AI w Więcej → AI.', at: Date.now() + 1 });
       return;
     }
     setBusy(true);
     try {
       const history = db.all('chat').sort((a, b) => a.at - b.at).slice(-16).map((m) => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.text }));
-      const res = await sync.invoke('ai', { mode: 'chat', messages: history, context: snapshot() });
+      const res = await askAI({ mode: 'chat', messages: history, context: snapshot() });
       db.patch('chat', null, { role: 'ai', text: res.reply || '…', actions: (res.actions || []).map((a) => ({ ...a, state: 'pending' })), at: Date.now() });
     } catch (e) {
       db.patch('chat', null, { role: 'ai', text: 'Nie udało się połączyć z AI: ' + e.message, at: Date.now() });

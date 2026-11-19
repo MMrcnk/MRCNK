@@ -35,6 +35,12 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json();
 
+    if (body.mode === 'day') {
+      const system = `Jesteś analitykiem osobistych danych w aplikacji MRCNK. Przeanalizuj JEDEN dzień na tle wczoraj i ostatnich 7 dni. Układ: DZIŚ W LICZBACH, CO ZADZIAŁAŁO, CO NIE ZADZIAŁAŁO, JUTRO – 1 DO 3 KONKRETNYCH DZIAŁAŃ. Maks. ok. 150 słów.\n${RULES}`;
+      const text = await claude(system, [{ role: 'user', content: 'Dane (JSON):\n' + JSON.stringify(body) }], 900);
+      return json({ text });
+    }
+
     if (body.mode === 'report') {
       const system = `Jesteś analitykiem osobistych danych w aplikacji MRCNK (dekalog, Deep Work, trening siłowy i Muay Thai, waga, dieta, sen, wieczorne analizy Top G / Bottom G).
 Przygotuj ${body.kind === 'week' ? 'tygodniowe' : 'miesięczne'} podsumowanie. Odpowiedz w tym układzie (nagłówki dużymi literami, bez markdown):

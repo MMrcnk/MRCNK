@@ -3,6 +3,7 @@ import { html, useState, useDB, nav, toast, Icon, Bar, Head, Field, Empty, regis
 import * as db from './db.js';
 import * as L from './logic.js';
 import * as sync from './sync.js';
+import { askAI } from './ai.js';
 
 const { fmt1, fmt0, fmtHM, fmtMin } = L;
 
@@ -54,7 +55,7 @@ export function Report({ cur, prev, kind, p }) {
     try {
       const notes = db.all('note').filter((n) => n.date >= p.from && n.date <= p.to).map((n) => n.text).slice(0, 40);
       const strip = (st) => ({ ...st, ruleRate: st.ruleRate.map((r) => ({ rule: r.rule.short, done: r.done, of: r.of })), moved: st.moved.map((m) => ({ title: m.title, moved: m.moved })), evenings: undefined });
-      const res = await sync.invoke('ai', { mode: 'report', kind, period: p, stats: strip(cur), prevStats: strip(prev), evenings: cur.evenings.map((e) => ({ date: e.d, top: e.top, bottom: e.bottom, tomorrow: e.tomorrow })), notes, facts: facts.map((f) => f.text), goals: { weightTarget: s.weightTarget, kcalTarget: s.kcalTarget, waterTarget: s.waterTarget, focusDailyMin: s.focusDailyMin }, longGoals: db.all('goal').map((g) => g.title) });
+      const res = await askAI({ mode: 'report', kind, period: p, stats: strip(cur), prevStats: strip(prev), evenings: cur.evenings.map((e) => ({ date: e.d, top: e.top, bottom: e.bottom, tomorrow: e.tomorrow })), notes, facts: facts.map((f) => f.text), goals: { weightTarget: s.weightTarget, kcalTarget: s.kcalTarget, waterTarget: s.waterTarget, focusDailyMin: s.focusDailyMin }, longGoals: db.all('goal').map((g) => g.title) });
       db.patch('ai', aiKey, { text: res.text, at: Date.now() });
     } catch (e) { toast(e.message); }
     setBusy(false);
@@ -87,7 +88,7 @@ export function Report({ cur, prev, kind, p }) {
       <div class="row between"><div class="ctitle c-acc">Analiza AI</div>
         <button type="button" class="btn sm b-acc" disabled=${busy} onClick=${runAI}>${busy ? 'Analizuję…' : ai ? 'Odśwież' : 'Analizuj'}</button></div>
       ${ai ? html`<div style="white-space:pre-wrap;font-size:15px;line-height:1.5">${ai.text}</div><div class="xs mut2">Wygenerowano ${new Date(ai.at).toLocaleString('pl-PL')}. AI interpretuje liczby wyliczone przez aplikację, sama nic nie liczy.</div>`
-        : html`<div class="small mut">Opis tygodnia, powtarzające się błędy z wieczornych analiz i maks. 3 rzeczy do zmiany. Wymaga połączenia z Supabase i funkcji AI.</div>`}
+        : html`<div class="small mut">Opis tygodnia, powtarzające się błędy z wieczornych analiz i maks. 3 rzeczy do zmiany. Wymaga klucza AI (Więcej → AI).</div>`}
     </div>
 
     <div class="card">

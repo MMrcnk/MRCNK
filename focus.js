@@ -2,6 +2,7 @@
 import { html, useState, useEffect, useDB, useTick, nav, toast, Icon, Check, Bar, Head, Field, Empty, NumIn, registerScreen, Bars } from './ui.js';
 import * as db from './db.js';
 import * as L from './logic.js';
+import { lockShow, lockUpdate, lockHide, lockActive, lockSupported } from './lockscreen.js';
 
 const { fmtHM, fmtMin, fmt0 } = L;
 
@@ -17,6 +18,7 @@ export const runningFocus = () => db.all('focus').find((f) => f.status === 'runn
 function interrupt(f, at, by) {
   db.patch('focus', f.id, { status: 'interrupted', end: at, interruptedBy: by, needReason: true, exits: [...(f.exits || []), { at, ms: Date.now() - at }] });
   L.keepAwake(false);
+  lockHide();
 }
 function onHide() {
   const f = runningFocus();
@@ -80,6 +82,7 @@ export function autoClose() {
     const endAt = f.start + (f.pausedMs || 0) + f.plannedMin * 60000;
     if (now >= endAt) db.patch('focus', f.id, { status: 'done', end: endAt, autoClosed: true });
   });
+  if (!db.all('focus').some((f) => f.status === 'running')) lockHide();
 }
 
 // ---------- start sesji ----------
@@ -109,6 +112,7 @@ function FocusSetup({ date }) {
     const id = db.patch('focus', null, { date, start: Date.now(), plannedMin: min, status: 'running', taskIds: sel, doneIds: [], pausedMs: 0, pauses: 0, exits: [], projectId: proj || null, device: deviceId() });
     localStorage.setItem('mrcnk_beat', JSON.stringify({ id, at: Date.now() }));
     L.keepAwake(true);
+    if (L.settings().lockScreen !== false) { const ft = ordered[0]; lockShow(db.get(id), ft ? ft.title : ''); }
     nav.replace('focusRun', { id });
   };
   return html`<div class="page">
@@ -155,6 +159,9 @@ function FocusRun({ id }) {
   const el = f ? L.focusMin(f, now) : 0;
   const left = f ? f.plannedMin - el : 1;
   useEffect(() => { if (f && f.status === 'running' && left <= 0) autoClose(); }, [left <= 0]);
+  const curTitle = f ? ((f.taskIds || []).map((x) => db.get(x)).find((t) => t && !t.done) || {}).title : '';
+  useEffect(() => { if (f && f.status === 'running') lockUpdate(f, curTitle); else lockHide(); }, [f && f.status, f && f.pausedAt, f && f.plannedMin, curTitle, Math.floor(now / 30000)]);
+  const [lockOn, setLockOn] = useState(lockActive());
   useEffect(() => { if (f && f.status === 'done' && f.autoClosed && !hit) { setHit(true); L.beep(3, 880); toast('Sesja zakończona – czas minął.'); } }, [f && f.status]);
   if (!f) return html`<div class="page"><${Head} title="Sesja" /><${Empty}>Nie znaleziono sesji.</${Empty}></div>`;
   const tasks = (f.taskIds || []).map((x) => db.get(x)).filter(Boolean);
@@ -176,7 +183,7 @@ function FocusRun({ id }) {
     if (f.pausedAt) pause();
     if (left > 0.05) { nav.sheet(EndEarlySheet, { id: f.id }); return; }
     db.patch('focus', f.id, { status: 'done', end: Date.now() });
-    L.keepAwake(false); L.beep(1);
+    L.keepAwake(false); lockHide(); L.beep(1);
     nav.replace('focusDone', { id: f.id });
   };
   if (f.status !== 'running') return html`<${FocusDone} id=${id} />`;
@@ -199,6 +206,7 @@ function FocusRun({ id }) {
       <button type="button" class=${'btn lg ' + (left <= 0 ? 'b-green' : 'b-danger')} onClick=${finish}>${left <= 0 ? 'Zakończ ✓' : 'Przerwij'}</button>
     </div>
     <button type="button" class="btn b-line" onClick=${() => { db.patch('focus', f.id, { plannedMin: f.plannedMin + 15 }); toast('Sesja przedłużona o 15 min'); }}><${Icon} n="plus" s=${16} />Przedłuż o 15 min</button>
+    ${lockSupported() && !lockOn && !lockActive() ? html`<button type="button" class="btn b-line" onClick=${async () => { const ok = await lockShow(f, curTitle); setLockOn(ok); toast(ok ? 'Sesja widoczna na ekranie blokady' : 'Nie udało się – ta przeglądarka nie pozwala'); }}><${Icon} n="eye" s=${16} />Pokaż na ekranie blokady</button>` : null}
     <div class="xs mut2" style="text-align:center;line-height:1.5">Sesja kończy się sama po ${f.plannedMin} min – nawet gdy zapomnisz.<br/>Pauza dłuższa niż ${PAUSE_LIMIT_MIN} min zamyka sesję. Wyjścia: ${(f.exits || []).length} · pauzy: ${f.pauses || 0}</div>
   </div>`;
 }
@@ -237,7 +245,7 @@ function EndEarlySheet({ close, id }) {
     <div class="row wrap" style="gap:6px">${['telefon', 'klient dzwoni', 'głód', 'zmęczenie', 'social media', 'ktoś przeszkodził'].map((r) => html`<button type="button" class="chip" onClick=${() => setReason(r)}>${r}</button>`)}</div>
     <div class="g2">
       <button type="button" class="btn lg b-ghost" onClick=${close}>Wracam do pracy</button>
-      <button type="button" class="btn lg b-danger" disabled=${!reason.trim()} onClick=${() => { db.patch('focus', id, { status: 'interrupted', end: Date.now(), interruptedBy: 'manual', reason: reason.trim(), needReason: false }); L.keepAwake(false); close(); nav.replace('focusDone', { id }); }}>Przerwij</button>
+      <button type="button" class="btn lg b-danger" disabled=${!reason.trim()} onClick=${() => { db.patch('focus', id, { status: 'interrupted', end: Date.now(), interruptedBy: 'manual', reason: reason.trim(), needReason: false }); L.keepAwake(false); lockHide(); close(); nav.replace('focusDone', { id }); }}>Przerwij</button>
     </div>
   </div>`;
 }

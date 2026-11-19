@@ -62,6 +62,7 @@ export const SETTINGS_DEFAULT = {
   focusDefaultMin: 90,
   graceSec: 15,
   strictExit: false,
+  lockScreen: true,
   weightTarget: 90,
   weightStart: 70.5,
   heightCm: 179,

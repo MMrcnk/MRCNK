@@ -4,9 +4,10 @@ import * as db from './db.js';
 import * as L from './logic.js';
 import * as sync from './sync.js';
 import { deviceId } from './focus.js';
+import { aiKey, aiModel, askAI } from './ai.js';
 
 const { fmt1, fmt0 } = L;
-export const APP_VERSION = '7';
+export const APP_VERSION = '8';
 export const VAPID_PUBLIC_DEFAULT = 'BGU7QEoTnv3OuK2L6q7h-OIr1oCrUyNH0vJPp2U6IIx_co5tbJRHMxmnYJan7n_Rl6Q2KC9f_7XSYM3IYKxvqV0';
 
 export function MoreTab() {
@@ -21,6 +22,7 @@ export function MoreTab() {
     ['notes', 'note', 'Notatki', 'var(--gold)'],
     ['dekalog', 'star', 'Dekalog', 'var(--gold)'],
     ['settings', 'gear', 'Ustawienia i cele', 'var(--mut)'],
+    ['aiSettings', 'bolt', 'AI – analizy i chat', 'var(--acc)'],
     ['notify', 'bell', 'Powiadomienia', 'var(--mut)'],
     ['syncScreen', 'sync', 'Konto, synchronizacja, kopia', 'var(--mut)'],
   ];
@@ -349,6 +351,10 @@ function SettingsScreen() {
       <div class="li" style="border:none">
         <${Check} on=${s.strictExit} onClick=${() => L.setSettings({ strictExit: !s.strictExit })} label="Blokada wyjścia" />
         <div class="grow col" style="gap:2px"><div>Deep Work: wyjście z aplikacji przerywa sesję</div><div class="xs mut">Wyłączone = możesz używać telefonu, WhatsAppa itd., timer liczy dalej</div></div>
+      </div>
+      <div class="li" style="border:none">
+        <${Check} on=${s.lockScreen !== false} onClick=${() => L.setSettings({ lockScreen: s.lockScreen === false })} label="Ekran blokady" />
+        <div class="grow col" style="gap:2px"><div>Deep Work na ekranie blokady</div><div class="xs mut">Sesja widoczna jak „Teraz odtwarzane”. Wycisza muzykę z innych aplikacji na czas sesji.</div></div>
       </div></div>
     <div class="card"><div class="ctitle">Poranna rutyna</div>
       ${morning.map((m, i) => html`<div class="row" style="gap:6px">
@@ -420,6 +426,33 @@ function SyncScreen() {
   </div>`;
 }
 registerScreen('syncScreen', SyncScreen);
+
+
+// ================= AI =================
+function AiSettings() {
+  const [key, setKey] = useState(aiKey());
+  const [model, setModel] = useState(aiModel());
+  const [busy, setBusy] = useState(false);
+  const save = () => { localStorage.setItem('mrcnk_ai_key', key.trim()); localStorage.setItem('mrcnk_ai_model', model.trim() || 'claude-sonnet-5-5'); toast('Zapisano'); };
+  const test = async () => { save(); setBusy(true); try { const r = await askAI({ mode: 'chat', messages: [{ role: 'user', content: 'Test połączenia. Odpowiedz jednym zdaniem.' }], context: { today: L.todayKey() } }); toast('Działa: ' + (r.reply || 'OK').slice(0, 80)); } catch (e) { toast(e.message); } setBusy(false); };
+  return html`<div class="page">
+    <${Head} title="AI" sub="Analiza dnia, raporty, chat" />
+    <div class="card">
+      <div class="ctitle">Klucz API</div>
+      <div class="small mut" style="line-height:1.5">1. Wejdź na <b>console.anthropic.com</b> i załóż konto<br/>2. <b>Billing</b> → doładuj (np. 5 $)<br/>3. <b>API Keys → Create Key</b> → skopiuj klucz <b>sk-ant-…</b><br/>4. Wklej poniżej i kliknij Test</div>
+      <${Field} label="Klucz Anthropic"><input type="password" autocomplete="off" placeholder="sk-ant-…" value=${key} onInput=${(e) => setKey(e.target.value)} /></${Field}>
+      <${Field} label="Model"><input value=${model} onInput=${(e) => setModel(e.target.value)} /></${Field}>
+      <div class="g2"><button type="button" class="btn b-acc" onClick=${save}>Zapisz</button><button type="button" class="btn b-ghost" disabled=${busy || !key.trim()} onClick=${test}>${busy ? 'Testuję…' : 'Test'}</button></div>
+      ${key ? html`<button type="button" class="small mut" onClick=${() => { localStorage.removeItem('mrcnk_ai_key'); setKey(''); toast('Klucz usunięty'); }}>Usuń klucz z tego urządzenia</button>` : null}
+      <div class="xs mut2" style="line-height:1.5">Klucz zostaje tylko na tym urządzeniu (nie trafia do GitHuba ani do synchronizacji). Na komputerze wpisz go osobno. Płacisz za użycie – jedna analiza to ułamki centa.</div>
+    </div>
+    <div class="card">
+      <div class="ctitle">Gdzie działa AI</div>
+      <div class="small" style="line-height:1.6">• <b>Karta dnia</b> (po wieczornym podsumowaniu) → „Analizuj dzień”<br/>• <b>Raporty</b> → Tydzień / Miesiąc → „Analizuj”<br/>• <b>Chat</b> (dymek w rogu) – pytania o dane, notatki, zmiany</div>
+    </div>
+  </div>`;
+}
+registerScreen('aiSettings', AiSettings);
 
 // ================= POWIADOMIENIA =================
 function b64ToUint8(b64) { const pad = '='.repeat((4 - (b64.length % 4)) % 4); const s = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from([...s].map((c) => c.charCodeAt(0))); }
