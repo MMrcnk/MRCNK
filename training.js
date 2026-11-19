@@ -20,17 +20,18 @@ function findOrCreateExercise(name) {
 
 // ================= JEDNORAZOWE ZMIANY PLANU =================
 const GORA = [
-  ['Wyciskanie hantli na skosie', 4, 6, 10, 1, 2, 150],
-  ['Podciąganie', 2, 6, 10, 1, 2, 150],
-  ['Wiosłowanie', 2, 8, 12, 1, 2, 120],
-  ['Wznosy bokiem', 2, 12, 20, 1, 1, 90],
-  ['OHP', 2, 6, 10, 1, 2, 150],
-  ['Triceps — prostowanie na wyciągu, ramiona przy tułowiu', 2, 10, 15, 1, 1, 90],
-  ['Triceps — wyprost zza głowy, ramiona uniesione', 2, 10, 15, 1, 1, 90],
-  ['Biceps — uginanie na wyciągu', 2, 10, 15, 1, 1, 90],
-  ['Biceps — uginanie hantlami', 2, 8, 12, 1, 1, 90],
+  ['Wyciskanie hantli na skosie', 4, 6, 10, 1, 2, 180],
+  ['Podciąganie', 2, 6, 10, 1, 2, 180],
+  ['Wiosłowanie', 2, 8, 12, 1, 2, 180],
+  ['Wznosy bokiem', 2, 12, 20, 1, 1, 120],
+  ['OHP', 2, 6, 10, 1, 2, 180],
+  ['Triceps — prostowanie na wyciągu, ramiona przy tułowiu', 2, 10, 15, 1, 1, 120],
+  ['Triceps — wyprost zza głowy, ramiona uniesione', 2, 10, 15, 1, 1, 120],
+  ['Biceps — uginanie na wyciągu', 2, 10, 15, 1, 1, 120],
+  ['Biceps — uginanie hantlami', 2, 8, 12, 1, 1, 120],
 ];
 export function migrate() {
+  migrateRest();
   if (db.get('mig:gora-3x')) return;
   const exercisesList = GORA.map(([name, sets, repMin, repMax, rir, rirMax, restSec]) => ({ exerciseId: findOrCreateExercise(name), sets, repMin, repMax, rir, rirMax, restSec }));
   db.patch('workout', 'wk:gora', { name: 'Góra', kind: 'strength', exercises: exercisesList, order: 0 });
@@ -49,6 +50,16 @@ export function migrate() {
   }
   old.forEach((id) => { const w = db.get(id); if (w && !(w.exercises || []).length) db.remove(id); });
   db.patch('meta', 'mig:gora-3x', { at: Date.now(), replaced });
+}
+
+function migrateRest() {
+  if (db.get('mig:gora-rest')) return;
+  const w = db.get('wk:gora');
+  if (w && w.exercises) {
+    const map = Object.fromEntries(GORA.map((g) => [g[0].toLowerCase(), g[6]]));
+    db.patch('workout', 'wk:gora', { exercises: w.exercises.map((e) => { const ex = db.get(e.exerciseId); const r = ex && map[ex.name.toLowerCase()]; return r ? { ...e, restSec: r } : e; }) });
+  }
+  db.patch('meta', 'mig:gora-rest', { at: Date.now() });
 }
 
 // ================= ZAKŁADKA TRENING =================
