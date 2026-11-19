@@ -465,3 +465,100 @@ export async function keepAwake(on) {
   } catch {}
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && wl && wl.released) keepAwake(true); });
+
+// ================= GRYWALIZACJA (z prawdziwych danych) =================
+export const SCORE_WEIGHTS = { dekalog: 40, focus: 20, tasks: 15, training: 15, body: 10 };
+
+export function dayScore(d, s = settings()) {
+  const sc = dekalogScore(d, s);
+  const fMin = focusTotal(d);
+  const fGoal = s.focusDailyMin || 180;
+  const t = tasksOn(d);
+  const slots = slotsOn(d);
+  const trDone = slots.filter((sl) => { const x = sessionFor(d, sl.key); return x && x.status === 'done'; }).length;
+  const kcal = kcalOn(d), water = waterOn(d);
+  const W = SCORE_WEIGHTS;
+  const parts = [
+    { key: 'dekalog', label: 'Dekalog', got: sc.total ? (sc.done / sc.total) * W.dekalog : 0, max: W.dekalog, info: `${sc.done}/${sc.total}` },
+    { key: 'focus', label: 'Deep Work', got: Math.min(1, fMin / fGoal) * W.focus, max: W.focus, info: `${fmtHM(fMin)} / ${fmtHM(fGoal)} h` },
+    { key: 'tasks', label: 'Zadania', got: t.length ? (t.filter((x) => x.done).length / t.length) * W.tasks : 0, max: W.tasks, info: t.length ? `${t.filter((x) => x.done).length}/${t.length}` : 'brak planu' },
+    { key: 'training', label: 'Treningi', got: slots.length ? (trDone / slots.length) * W.training : W.training, max: W.training, info: slots.length ? `${trDone}/${slots.length}` : 'dzień wolny' },
+    { key: 'body', label: 'Kalorie + woda', got: (Math.min(1, kcal / (s.kcalTarget || 1)) * 0.5 + Math.min(1, water / (s.waterTarget || 1)) * 0.5) * W.body, max: W.body, info: `${fmt0(kcal)} kcal · ${fmt1(water / 1000)} l` },
+  ];
+  return { score: Math.round(sum(parts.map((p) => p.got))), parts };
+}
+
+export const scoreColor = (v) => (v == null ? '#2C2C33' : v >= 95 ? 'var(--gold)' : v >= 80 ? 'var(--green)' : v >= 60 ? 'var(--blue)' : v >= 40 ? 'var(--amb)' : 'var(--red)');
+export const scoreHeat = (v) => (v == null ? '#1F1F24' : v >= 95 ? '#F2C14E' : v >= 80 ? '#3DDC84' : v >= 60 ? '#2FA865' : v >= 40 ? '#23744A' : v > 0 ? '#1D4B35' : '#2A1A1C');
+
+export const trackedDays = (to = todayKey()) => { const st = settings().startedOn || to; return st > to ? [] : range(st, to); };
+
+export function weekScore(ws, upTo = todayKey()) {
+  const days = range(ws, addDays(ws, 6)).filter((d) => d <= upTo && d >= (settings().startedOn || d));
+  if (!days.length) return null;
+  const scores = days.map((d) => dayScore(d).score);
+  return { avg: avg(scores), total: sum(scores), days: days.length };
+}
+
+// porównanie z tym samym dniem tygodnia przed tygodniem, do tej samej godziny
+export function ghost(d, now = Date.now()) {
+  const g = addDays(d, -7);
+  if (g < (settings().startedOn || g)) return null;
+  const shift = 7 * 86400000;
+  const cut = now - shift;
+  const fNow = focusTotal(d);
+  const fThen = sum(focusOn(g).map((f) => { if (f.start > cut) return 0; const end = Math.min(f.end || cut, cut); return Math.max(0, (end - f.start - (f.pausedMs || 0)) / 60000); }));
+  const tNow = tasksOn(d).filter((t) => t.done).length;
+  const tThen = tasksOn(g).filter((t) => t.done && t.doneAt && t.doneAt <= cut).length;
+  return { date: g, focusNow: fNow, focusThen: fThen, tasksNow: tNow, tasksThen: tThen, finalScore: dayScore(g).score };
+}
+
+export function records(upTo = todayKey()) {
+  const days = trackedDays(upTo);
+  let bestDay = null, bestFocusDay = null, longest = 0, run = 0;
+  days.forEach((d) => {
+    const s = dayScore(d).score;
+    if (!bestDay || s > bestDay.v) bestDay = { v: s, d };
+    const f = focusTotal(d);
+    if (f > 0 && (!bestFocusDay || f > bestFocusDay.v)) bestFocusDay = { v: f, d };
+    const sc = dekalogScore(d);
+    if (sc.total && sc.done === sc.total) { run++; longest = Math.max(longest, run); } else run = 0;
+  });
+  let bestWeek = null, bestFocusWeek = null;
+  const weeks = [...new Set(days.map(weekStart))];
+  weeks.forEach((w) => {
+    const ws = weekScore(w, upTo);
+    if (ws && ws.days >= 3 && (!bestWeek || ws.avg > bestWeek.v)) bestWeek = { v: ws.avg, d: w };
+    const f = sum(range(w, addDays(w, 6)).map(focusTotal));
+    if (f > 0 && (!bestFocusWeek || f > bestFocusWeek.v)) bestFocusWeek = { v: f, d: w };
+  });
+  return { bestDay, bestFocusDay, longest, bestWeek, bestFocusWeek };
+}
+
+// nowe rekordy ustanowione danego dnia (vs wszystko przed nim)
+export function newRecordsOn(d) {
+  const before = trackedDays(addDays(d, -1));
+  if (before.length < 3) return [];
+  const out = [];
+  const prevBest = Math.max(...before.map((x) => dayScore(x).score));
+  const s = dayScore(d).score;
+  if (s > prevBest) out.push(`Najlepszy dzień: ${s}% (poprzednio ${prevBest}%)`);
+  const prevF = Math.max(0, ...before.map(focusTotal));
+  const f = focusTotal(d);
+  if (f > prevF && f > 0) out.push(`Najwięcej Deep Work w dniu: ${fmtHM(f)} h`);
+  return out;
+}
+
+// siła całkowita: suma najlepszych e1RM ćwiczeń oznaczonych jako główne (stan na dany dzień)
+const MAIN_RX = /wyciskan|podciąg|wiosł|ohp|przysiad|martwy|bench|squat|deadlift/i;
+export const isMainLift = (ex) => (ex.main != null ? !!ex.main : MAIN_RX.test(ex.name || ''));
+export function strengthTotal(upTo) {
+  let total = 0; const parts = [];
+  db.all('exercise').filter(isMainLift).forEach((ex) => {
+    const h = exerciseHistory(ex.id, upTo).filter((x) => x.date >= addDays(upTo, -56));
+    if (!h.length) return;
+    const best = Math.max(...h.slice(-3).map((x) => x.best));
+    total += best; parts.push({ name: ex.name, v: best });
+  });
+  return { total, parts };
+}

@@ -1,5 +1,5 @@
 // MRCNK – raporty tygodniowe/miesięczne, porównanie okresów, przegląd tygodnia
-import { html, useState, useDB, nav, toast, Icon, Bar, Head, Field, Empty, registerScreen, LineChart } from './ui.js';
+import { html, useState, useDB, nav, toast, Icon, Bar, Bars, Head, Field, Empty, registerScreen, LineChart } from './ui.js';
 import * as db from './db.js';
 import * as L from './logic.js';
 import * as sync from './sync.js';
@@ -20,7 +20,7 @@ function shift(kind, anchor, n) {
 export function ReportsTab() {
   useDB();
   const t = L.todayKey();
-  const [kind, setKind] = useState('week');
+  const [kind, setKind] = useState('progress');
   const [anchor, setAnchor] = useState(t);
   const p = periodOf(kind, anchor);
   const pp = periodOf(kind, shift(kind, anchor, -1));
@@ -29,10 +29,10 @@ export function ReportsTab() {
   const s = L.settings();
   return html`<div class="page">
     <div class="top"><div class="col" style="gap:2px"><div class="brand">MRCNK</div><div class="title">Raporty</div></div></div>
-    <div class="g3">
-      ${[['week', 'Tydzień'], ['month', 'Miesiąc'], ['compare', 'Porównaj']].map(([k, l]) => html`<button type="button" class=${'btn sm ' + (kind === k ? 'b-acc' : 'b-ghost')} onClick=${() => setKind(k)}>${l}</button>`)}
+    <div class="g2" style="grid-template-columns:repeat(4,minmax(0,1fr));gap:6px">
+      ${[['progress', 'Progres'], ['week', 'Tydzień'], ['month', 'Miesiąc'], ['compare', 'Porównaj']].map(([k, l]) => html`<button type="button" class=${'btn sm ' + (kind === k ? 'b-acc' : 'b-ghost')} onClick=${() => setKind(k)}>${l}</button>`)}
     </div>
-    ${kind === 'compare' ? html`<${Compare} />` : html`
+    ${kind === 'progress' ? html`<${Progress} />` : kind === 'compare' ? html`<${Compare} />` : html`
       <div class="row between">
         <button type="button" class="icon-btn" aria-label="Wcześniej" onClick=${() => setAnchor(shift(kind, anchor, -1))}><${Icon} n="back" /></button>
         <div class="h" style="font-size:20px">${p.label}</div>
@@ -149,6 +149,78 @@ export function Report({ cur, prev, kind, p }) {
         ${e.bottom ? html`<div class="small"><span class="c-red">−</span> ${e.bottom}</div>` : null}
         ${e.tomorrow ? html`<div class="small"><span class="c-acc">→</span> ${e.tomorrow}</div>` : null}
       </div>`) : null}
+    </div>
+  </div>`;
+}
+
+
+// ================= PROGRES =================
+function Heatmap() {
+  const t = L.todayKey();
+  const start = L.weekStart(L.addDays(t, -7 * 52));
+  const st = L.settings().startedOn || t;
+  const weeks = [];
+  for (let w = start; w <= t; w = L.addDays(w, 7)) weeks.push(L.range(w, L.addDays(w, 6)));
+  const ref = (el) => { if (el && !el.dataset.s) { el.scrollLeft = el.scrollWidth; el.dataset.s = '1'; } };
+  return html`<div class="card">
+    <div class="row between"><div class="ctitle">Rok w kwadratach</div><div class="xs mut2">kolor = wynik dnia</div></div>
+    <div ref=${ref} style="overflow-x:auto;padding-bottom:4px"><div class="row" style="gap:3px;align-items:flex-start;width:max-content">
+      ${weeks.map((w) => html`<div class="col" style="gap:3px">${w.map((d) => { const v = d > t || d < st ? null : L.dayScore(d).score;
+        return html`<button type="button" title=${d + (v != null ? ' · ' + v + '%' : '')} aria-label=${d} onClick=${() => v != null && nav.push('dayCard', { date: d })} style=${'width:13px;height:13px;border-radius:3px;background:' + (d > t ? 'transparent' : L.scoreHeat(v)) + (d === t ? ';outline:1px solid var(--acc)' : '')}></button>`; })}</div>`)}
+    </div></div>
+    <div class="row xs mut2" style="gap:6px;align-items:center">mniej ${[10, 45, 65, 85, 100].map((v) => html`<i style=${'display:inline-block;width:11px;height:11px;border-radius:3px;background:' + L.scoreHeat(v)}></i>`)} więcej</div>
+  </div>`;
+}
+
+function Progress() {
+  const t = L.todayKey();
+  const s = L.settings();
+  const ws = L.weekStart(t);
+  const cur = L.weekScore(ws, t);
+  const prev = L.weekScore(L.addDays(ws, -7), L.addDays(ws, -1));
+  const prevSame = L.weekScore(L.addDays(ws, -7), L.addDays(t, -7));
+  const rec = L.records(t);
+  const wa = L.weightAvg7(t) ?? (L.lastWeight(t) || {}).kg;
+  const w0 = s.weightStart || wa;
+  const wPct = wa != null && s.weightTarget > w0 ? Math.max(0, Math.min(1, (wa - w0) / (s.weightTarget - w0))) : 0;
+  const miles = []; for (let m = Math.ceil((w0 + 0.01) / 5) * 5; m <= s.weightTarget; m += 5) miles.push(m);
+  const weeks = []; for (let i = 11; i >= 0; i--) weeks.push(L.addDays(ws, -7 * i + 6));
+  const strength = weeks.map((d) => ({ x: L.fmtShort(L.addDays(d, -6)), y: L.strengthTotal(d > t ? t : d).total })).filter((p) => p.y > 0);
+  const st = L.strengthTotal(t);
+  const days = L.range(ws, L.addDays(ws, 6));
+  return html`<div class="col" style="gap:14px">
+    <div class="card">
+      <div class="row between"><div class="ctitle">Tydzień do pobicia</div><div class="xs mut2">śr. wynik dnia</div></div>
+      <div class="g2">
+        <div><div class="lbl mut">Ten tydzień</div><div class="n" style=${'font-size:36px;color:' + L.scoreColor(cur ? cur.avg : null)}>${cur ? Math.round(cur.avg) + '%' : '–'}</div></div>
+        <div><div class="lbl mut">Zeszły</div><div class="n mut" style="font-size:36px">${prev ? Math.round(prev.avg) + '%' : '–'}</div></div>
+      </div>
+      ${cur && prevSame ? html`<div class="small">${cur.avg >= prevSame.avg ? html`<span class="up">Do tego dnia tygodnia jesteś lepszy o ${Math.round(cur.avg - prevSame.avg)} pkt.</span>` : html`<span class="down">Do tego dnia tygodnia tracisz ${Math.round(prevSame.avg - cur.avg)} pkt – jest jeszcze czas.</span>`}</div>` : null}
+      <${Bars} data=${days.map((d) => { const v = d <= t && d >= (s.startedOn || d) ? L.dayScore(d).score : 0; return { x: L.DOW_S[L.isoDow(d)].slice(0, 2), y: v, color: L.scoreColor(v) }; })} fmtY=${(v) => v + '%'} h=${110} />
+    </div>
+    <${Heatmap} />
+    <div class="card gold">
+      <div class="ctitle c-gold">Rekordy</div>
+      <div class="g2 small" style="row-gap:12px">
+        <div><div class="xs mut">Najlepszy dzień</div><div class="n" style="font-size:24px">${rec.bestDay ? rec.bestDay.v + '%' : '–'}</div><div class="xs mut2">${rec.bestDay ? L.fmtShort(rec.bestDay.d) : ''}</div></div>
+        <div><div class="xs mut">Najlepszy tydzień</div><div class="n" style="font-size:24px">${rec.bestWeek ? Math.round(rec.bestWeek.v) + '%' : '–'}</div><div class="xs mut2">${rec.bestWeek ? 'od ' + L.fmtShort(rec.bestWeek.d) : ''}</div></div>
+        <div><div class="xs mut">Deep Work – dzień</div><div class="n" style="font-size:24px">${rec.bestFocusDay ? L.fmtHM(rec.bestFocusDay.v) : '–'}</div><div class="xs mut2">${rec.bestFocusDay ? L.fmtShort(rec.bestFocusDay.d) : ''}</div></div>
+        <div><div class="xs mut">Deep Work – tydzień</div><div class="n" style="font-size:24px">${rec.bestFocusWeek ? L.fmtHM(rec.bestFocusWeek.v) : '–'}</div><div class="xs mut2">${rec.bestFocusWeek ? 'od ' + L.fmtShort(rec.bestFocusWeek.d) : ''}</div></div>
+        <div><div class="xs mut">Najdłuższa seria 10/10</div><div class="n" style="font-size:24px">${rec.longest} dni</div></div>
+        <div><div class="xs mut">Obecna seria 10/10</div><div class="n" style="font-size:24px">${L.streakFull(t)} dni</div></div>
+      </div>
+    </div>
+    <div class="card acc">
+      <div class="row between"><div class="ctitle c-acc">Droga do ${L.fmt1(s.weightTarget)} kg</div><div class="n" style="font-size:22px">${wa != null ? L.fmt1(wa) + ' kg' : '–'}</div></div>
+      <div style="position:relative"><${Bar} pct=${wPct} color="var(--acc)" />
+        ${miles.map((m) => html`<i style=${'position:absolute;top:-3px;height:14px;width:2px;background:var(--bg);left:' + ((m - w0) / (s.weightTarget - w0)) * 100 + '%'}></i>`)}</div>
+      <div class="row between xs mut2"><span>start ${L.fmt1(w0)}</span>${miles.map((m) => html`<span class=${wa >= m ? 'c-acc' : ''}>${m}</span>`)}</div>
+      <div class="small">${wa != null ? html`Zrobione <b>${Math.round(wPct * 100)}%</b> drogi · zostało ${L.fmt1(s.weightTarget - wa)} kg${s.weightDeadline ? ' · termin ' + L.fmtShort(s.weightDeadline) + '.' + s.weightDeadline.slice(0, 4) : ''}` : 'Wpisuj poranną wagę, żeby śledzić drogę do celu.'}</div>
+    </div>
+    <div class="card red">
+      <div class="row between"><div class="ctitle c-red">Siła całkowita</div><div class="n" style="font-size:22px">${st.total ? L.fmt0(st.total) + ' kg' : '–'}</div></div>
+      <div class="xs mut2">Suma szacowanych maksów (e1RM) głównych ćwiczeń: ${st.parts.length ? st.parts.map((p) => p.name).join(', ') : 'brak danych'}. Ćwiczenie dodasz/usuniesz w Trening → Ćwiczenia.</div>
+      ${strength.length >= 2 ? html`<${LineChart} data=${strength} color="var(--red)" fmtY=${L.fmt0} labels />` : html`<div class="small mut">Wykres pojawi się po treningach z co najmniej 2 tygodni.</div>`}
     </div>
   </div>`;
 }

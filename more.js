@@ -7,7 +7,7 @@ import { deviceId } from './focus.js';
 import { aiKey, aiModel, askAI, aiProvider, DEFAULT_MODEL, userPrompt } from './ai.js';
 
 const { fmt1, fmt0 } = L;
-export const APP_VERSION = '12';
+export const APP_VERSION = '13';
 export const VAPID_PUBLIC_DEFAULT = 'BGU7QEoTnv3OuK2L6q7h-OIr1oCrUyNH0vJPp2U6IIx_co5tbJRHMxmnYJan7n_Rl6Q2KC9f_7XSYM3IYKxvqV0';
 
 export function MoreTab() {
@@ -473,7 +473,7 @@ function AiSettings() {
     <${PromptCard} />
     <div class="card">
       <div class="ctitle">Gdzie działa AI</div>
-      <div class="small" style="line-height:1.6">• <b>Karta dnia</b> (po wieczornym podsumowaniu) → „Analizuj dzień”<br/>• <b>Raporty</b> → Tydzień / Miesiąc → „Analizuj”<br/>• <b>Chat</b> (dymek w rogu) – pytania o dane, notatki, zmiany</div>
+      <div class="small" style="line-height:1.6">• <b>Karta dnia</b> (po wieczornym podsumowaniu) → „Analizuj dzień”<br/>• <b>Raporty</b> → Tydzień / Miesiąc → „Analizuj”<br/>• <b>Trening</b> → „Propozycja AI na dziś” – ciężary i powtórzenia<br/>• <b>Chat</b> (dymek w rogu) – pytania o dane, notatki, zmiany</div>
     </div>
   </div>`;
 }

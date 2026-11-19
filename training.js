@@ -3,6 +3,7 @@ import { html, useState, useEffect, useRef, useDB, useTick, nav, toast, Icon, Ch
 import * as db from './db.js';
 import * as L from './logic.js';
 import { SimpleSheet } from './today.js';
+import { askAI, aiReady } from './ai.js';
 
 const { fmt1, fmt0, fmtMin } = L;
 const workouts = () => db.all('workout').sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name));
@@ -267,6 +268,7 @@ function ExerciseScreen({ id }) {
         <button type="button" class=${'btn sm ' + (!e.perHand ? 'b-red' : 'b-ghost')} onClick=${() => db.patch('exercise', id, { perHand: false })}>Całkowity</button>
       </div>
       <${Field} label="Skok ciężaru (kg)"><${NumIn} value=${e.increment} onCommit=${(v) => db.patch('exercise', id, { increment: v || 2.5 })} /></${Field}>
+      <button type="button" class=${'btn sm ' + (L.isMainLift(e) ? 'b-red' : 'b-ghost')} onClick=${() => db.patch('exercise', id, { main: !L.isMainLift(e) })}>${L.isMainLift(e) ? '✓ Liczy się do siły całkowitej' : 'Dodaj do siły całkowitej'}</button>
     </div>
   </div>`;
 }
@@ -332,6 +334,28 @@ function Workout({ id, date, slotKey }) {
     setIdx(exs.length); setNewEx('');
   };
   const finish = () => nav.sheet(FinishSheet, { id: s.id });
+  const [aiBusy, setAiBusy] = useState(false);
+  const askPlan = async () => {
+    setAiBusy(true);
+    try {
+      const t0 = s.date;
+      const st7 = L.periodStats(L.addDays(t0, -6), t0);
+      const recentOther = db.all('session').filter((x) => x.status === 'done' && x.date >= L.addDays(t0, -7) && x.date <= t0 && x.kind !== 'strength').map((x) => ({ date: x.date, name: x.name, min: x.durationMin, intensity: x.intensity, type: x.type }));
+      const d = L.day(t0), y = L.day(L.addDays(t0, -1));
+      const body = { mode: 'workout', date: t0, workout: s.name,
+        exercises: exs.map((x) => ({ name: x.name, plan: x.plan, perHand: !!(db.get(x.exerciseId) || {}).perHand, increment: (db.get(x.exerciseId) || {}).increment,
+          history: L.exerciseHistory(x.exerciseId, t0).filter((h) => h.sessionId !== s.id).slice(-6).map((h) => ({ date: h.date, sets: h.sets.map((z) => ({ kg: z.w, reps: z.reps, rir: z.rir })), e1rm: Math.round(h.best * 10) / 10 })),
+          doneToday: x.sets.filter((z) => z.done).map((z) => ({ kg: z.w, reps: z.reps, rir: z.rir })), appSuggestion: x.suggestion })),
+        recovery: { fatigueYesterday: y.fatigue, sorenessYesterday: y.soreness, energyYesterday: y.energy, trainingLoad7d: Math.round(st7.load), otherTrainings7d: recentOther },
+        bodyweight: L.weightAvg7(t0) };
+      const res = await askAI(body);
+      db.patch('session', s.id, { aiPlan: { ...res, at: Date.now() } });
+      toast('Propozycja AI gotowa');
+    } catch (err) { toast(err.message); }
+    setAiBusy(false);
+  };
+  const aiFor = (x) => { const list = (s.aiPlan && s.aiPlan.exercises) || []; return list.find((a) => (a.name || '').toLowerCase() === x.name.toLowerCase()) || list[exs.indexOf(x)]; };
+  const applyAi = (a) => { const reps = a.reps || []; save(exs.map((x, i) => (i === idx ? { ...x, sets: x.sets.map((st, j) => (st.done ? st : { ...st, w: a.weight ?? st.w, target: reps[j] ?? reps[reps.length - 1] ?? st.target })) } : x))); toast('Wpisano propozycję AI'); };
   const prev = e ? L.exerciseHistory(e.exerciseId, s.date).filter((h) => h.sessionId !== s.id) : [];
   const last = prev[prev.length - 1];
   const exInfo = e ? db.get(e.exerciseId) : null;
@@ -341,6 +365,8 @@ function Workout({ id, date, slotKey }) {
   return html`<div class="page" style="padding-bottom:calc(150px + var(--safe-b))">
     <${Head} title=${s.name} sub=${`${el} min · ${exs.filter((x) => x.sets.some((y) => y.done)).length}/${exs.length} ćwiczeń`}
       right=${html`<button type="button" class="btn sm b-green" onClick=${finish}>Zakończ</button>`} />
+    ${exs.length ? html`<button type="button" class="btn b-line" style="border-color:var(--acc-line);color:var(--acc)" disabled=${aiBusy} onClick=${aiReady() ? askPlan : () => nav.push('aiSettings')}><${Icon} n="bolt" s=${16} />${aiBusy ? 'AI analizuje Twoje wyniki…' : s.aiPlan ? 'Odśwież propozycję AI' : 'Propozycja AI na dziś (ciężary i powtórzenia)'}</button>` : null}
+    ${s.aiPlan && s.aiPlan.summary ? html`<div class="card acc tight"><div class="lbl c-acc">AI · dzisiejszy trening</div><div class="small" style="line-height:1.45;white-space:pre-wrap">${s.aiPlan.summary}</div></div>` : null}
     <div class="row" style="gap:6px;overflow-x:auto;padding-bottom:2px">
       ${exs.map((x, i) => html`<button type="button" class="chip" style=${'flex-shrink:0;height:34px;' + (i === idx ? 'background:var(--red);color:var(--red-ink);border-color:transparent' : x.sets.length && x.sets.every((y) => y.done) ? 'color:var(--green)' : '')} onClick=${() => { setIdx(i); setShowWhy(false); }}>${i + 1}. ${x.name.length > 18 ? x.name.slice(0, 17) + '…' : x.name}</button>`)}
     </div>
@@ -354,6 +380,11 @@ function Workout({ id, date, slotKey }) {
           <span style="font-weight:600">${last ? `${fmt1(Math.max(...last.sets.map((x) => x.w || 0)))} kg × ${last.sets.map((x) => x.reps).join(' / ')}` : 'pierwszy raz'}</span>
           ${last ? html`<span class="xs mut2">${L.fmtShort(last.date)}</span>` : null}
         </div>
+        ${aiFor(e) ? html`<div class="col" style="gap:6px;background:#121A26;border:1px solid var(--blue-line);border-radius:12px;padding:10px 12px">
+          <div class="row between"><span class="lbl c-blue" style="font-size:11px">Propozycja AI</span><button type="button" class="btn xs b-blue" onClick=${() => applyAi(aiFor(e))}>Wpisz do serii</button></div>
+          <div style="font-size:16px;font-weight:600">${aiFor(e).weight != null ? fmt1(aiFor(e).weight) + ' kg' : '—'} × ${(aiFor(e).reps || []).join(' / ')}${aiFor(e).rir != null ? ' · RIR ' + aiFor(e).rir : ''}</div>
+          ${aiFor(e).note ? html`<div class="xs mut" style="line-height:1.45">${aiFor(e).note}</div>` : null}
+        </div>` : null}
         ${e.suggestion ? html`<div class="col" style="gap:6px;background:#241A10;border:1px solid var(--acc-line);border-radius:12px;padding:10px 12px">
           <div class="row between"><span class="lbl c-acc" style="font-size:11px">${e.flag === 'fatigue' ? 'Uwaga: zmęczenie' : 'Sugestia'}</span><button type="button" class="xs c-acc" onClick=${() => setShowWhy(!showWhy)}>${showWhy ? 'ukryj' : 'dlaczego?'}</button></div>
           <div style="font-size:15px;line-height:1.35">${e.suggestion}</div>

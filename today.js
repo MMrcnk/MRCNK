@@ -32,6 +32,7 @@ export function TodayTab({ date: forced }) {
     </div>
     ${!isToday ? html`<button type="button" class="chip" style="align-self:flex-start" onClick=${() => nav.pop()}><${Icon} n="back" s=${14} />${date < today ? 'Edytujesz przeszły dzień' : 'Planujesz przyszły dzień'} · wróć</button>` : null}
     ${evening ? html`<${EveningCTA} date=${date} />` : null}
+    <${ScoreCard} date=${date} isToday=${isToday} />
     <${DekalogCard} date=${date} />
     ${isToday && hour < s.eveningHour ? html`<${YesterdayRule6} date=${date} />` : null}
     <${ResolutionCard} date=${date} />
@@ -56,6 +57,46 @@ function EveningCTA({ date }) {
     <div class="h" style="font-size:28px">Podsumuj dzień</div>
     <div class="small mut">Dekalog · samopoczucie · Top G / Bottom G · zadania na jutro</div>
   </button>`;
+}
+
+
+// ---------- wynik dnia + duch + tydzień ----------
+export function ScoreBreakdown({ parts }) {
+  return html`<div class="col" style="gap:8px">${parts.map((p) => html`<div class="col" style="gap:4px">
+    <div class="row between small"><span>${p.label} <span class="mut2 xs">${p.info}</span></span><span class="n" style="font-size:16px">${Math.round(p.got)}<span class="mut2">/${p.max}</span></span></div>
+    <${Bar} pct=${p.got / p.max} color=${L.scoreColor((p.got / p.max) * 100)} /></div>`)}</div>`;
+}
+
+function ScoreCard({ date, isToday }) {
+  const [open, setOpen] = useState(false);
+  useTick(60000);
+  const ds = L.dayScore(date);
+  const g = isToday ? L.ghost(date) : null;
+  const ws = L.weekStart(date);
+  const cur = L.weekScore(ws, date);
+  const prev = L.weekScore(L.addDays(ws, -7), L.addDays(date, -7));
+  const prevFull = L.weekScore(L.addDays(ws, -7), L.addDays(ws, -1));
+  const cmp = (a, b, f = (x) => x) => (a > b ? html`<span class="up">${f(a)} ▲</span>` : a < b ? html`<span class="down">${f(a)} ▼</span>` : html`<span>${f(a)}</span>`);
+  return html`<div class="card">
+    <button type="button" class="row between" style="width:100%;align-items:flex-end" onClick=${() => setOpen(!open)} aria-expanded=${open}>
+      <div class="col" style="gap:2px;text-align:left"><div class="lbl mut">Wynik dnia</div><div class="xs mut2">${isToday ? 'na teraz' : 'końcowy'} · tapnij, żeby zobaczyć z czego</div></div>
+      <div class="n" style=${'font-size:44px;line-height:1;color:' + L.scoreColor(ds.score)}>${ds.score}%</div>
+    </button>
+    <${Bar} pct=${ds.score / 100} color=${L.scoreColor(ds.score)} />
+    ${open ? html`<${ScoreBreakdown} parts=${ds.parts} />` : null}
+    ${g ? html`<div class="col" style="gap:4px;border-top:1px solid var(--line2);padding-top:10px">
+      <div class="lbl mut" style="font-size:11px">Ty vs Ty sprzed tygodnia (${L.DOW_S[L.isoDow(g.date)]} ${L.fmtShort(g.date)}) · o tej godzinie</div>
+      <div class="g2 small">
+        <div>Deep Work: ${cmp(g.focusNow, g.focusThen, (x) => L.fmtHM(x))} <span class="mut2">vs ${L.fmtHM(g.focusThen)}</span></div>
+        <div>Zadania: ${cmp(g.tasksNow, g.tasksThen)} <span class="mut2">vs ${g.tasksThen}</span></div>
+      </div>
+      <div class="xs mut2">Tamten dzień skończyłeś z wynikiem ${g.finalScore}%.</div>
+    </div>` : null}
+    ${cur && prevFull ? html`<div class="row between small" style="border-top:1px solid var(--line2);padding-top:10px">
+      <span>Tydzień: <b>${Math.round(cur.avg)}%</b> <span class="mut2">(${cur.days} dni)</span></span>
+      ${prev ? html`<span>${cur.avg >= prev.avg ? html`<span class="up">bijesz zeszły o ${Math.round(cur.avg - prev.avg)} pkt</span>` : html`<span class="down">do zeszłego brakuje ${Math.round(prev.avg - cur.avg)} pkt</span>`}</span>` : null}
+    </div>` : null}
+  </div>`;
 }
 
 // ---------- dekalog ----------
@@ -614,6 +655,8 @@ function DayAI({ date }) {
 
 export function DayCard({ date }) {
   useDB();
+  const sc = L.dayScore(date), scY = L.dayScore(L.addDays(date, -1));
+  const recs = L.newRecordsOn(date);
   const s = L.settings();
   const a = dayStats(date), b = dayStats(L.addDays(date, -1));
   const d = L.day(date);
@@ -627,6 +670,13 @@ export function DayCard({ date }) {
   };
   const R = (label, val, dl) => html`<tr><td>${label}</td><td class="r" style="font-weight:600">${val}</td><td class="r">${dl}</td></tr>`;
   return html`<div class="col">
+    ${recs.length ? html`<div class="card gold" style="align-items:center;text-align:center"><div class="row" style="gap:8px;color:var(--gold)"><${Icon} n="trophy" /><span class="h" style="font-size:24px">Nowy rekord</span></div>${recs.map((r) => html`<div class="small">${r}</div>`)}</div>` : null}
+    <div class="card" style="align-items:center;text-align:center;gap:6px">
+      <div class="lbl mut">Dzień wykorzystany w</div>
+      <div class="big" style=${'font-size:84px;color:' + L.scoreColor(sc.score)}>${sc.score}%</div>
+      <div class="small">${sc.score - scY.score >= 0 ? html`<span class="up">+${sc.score - scY.score} pkt vs wczoraj</span>` : html`<span class="down">${sc.score - scY.score} pkt vs wczoraj</span>`}</div>
+      <div style="width:100%;text-align:left"><${ScoreBreakdown} parts=${sc.parts} /></div>
+    </div>
     <div class="card gold">
       <div class="row between"><div class="lbl c-gold">Karta dnia · ${L.fmtShort(date)}</div><div class="n c-gold" style="font-size:40px;line-height:1">${a.dek}/${a.dekT}</div></div>
       <${Seg} states=${L.dekalogScore(date).states.map((x) => x.ok === true)} />

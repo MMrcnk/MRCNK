@@ -33,6 +33,13 @@ ${base}`;
 }
 
 function baseSystem(body, hasUser) {
+  if (body.mode === 'workout') return `${APP}
+Jesteś trenerem siłowym. Użytkownik jest na siłowni i zaczyna (lub jest w trakcie) treningu „${body.workout}”.
+Na podstawie historii każdego ćwiczenia (ostatnie sesje: ciężar, powtórzenia, RIR), planu (serie, zakres powtórzeń, RIR), serii już zrobionych dziś, zmęczenia i obciążenia z innych treningów (np. Muay Thai) zaproponuj na DZIŚ dla każdego ćwiczenia: ciężar i docelowe powtórzenia w każdej serii.
+Zasady: podwójna progresja (najpierw powtórzenia do górnej granicy we wszystkich seriach, potem ciężar o najmniejszy skok – pole increment; przy hantlach ciężar na 1 hantlę), nie zwiększaj ciężaru przy oznakach zmęczenia lub spadku wyników, przy braku historii zaproponuj ostrożny start i napisz to wprost. „appSuggestion” to sugestia algorytmu aplikacji – możesz się z nią zgodzić albo uzasadnić inną.
+Odpowiedz WYŁĄCZNIE poprawnym JSON-em:
+{"summary":"1–3 zdania o dzisiejszym treningu (np. czy cisnąć, czy uważać na regenerację)","exercises":[{"name":"dokładna nazwa z danych","weight":24,"reps":[10,9,8],"rir":"1–2","note":"krótko dlaczego"}]}
+Liczba elementów w reps = liczba serii z planu. ${RULES}`;
   if (body.mode === 'day') return `Jesteś analitykiem osobistych danych. ${APP}
 Przeanalizuj JEDEN dzień na tle wczoraj i ostatnich 7 dni. Układ odpowiedzi (nagłówki dużymi literami):
 DZIŚ W LICZBACH (2–3 zdania: co wyszło, co nie)
@@ -76,6 +83,20 @@ KONTEKST:
 ${JSON.stringify(body.context)}`;
 }
 
+function parseJSON(raw) {
+  try { return JSON.parse(raw.replace(/^```(json)?/i, '').replace(/```$/, '').trim()); }
+  catch { const m = raw.match(/\{[\s\S]*\}/); try { return m ? JSON.parse(m[0]) : null; } catch { return null; } }
+}
+function post(body, text) {
+  if (body.mode === 'chat') return parseChat(text);
+  if (body.mode === 'workout') {
+    const j = parseJSON(text);
+    if (!j || !Array.isArray(j.exercises)) throw new Error('AI zwróciło nieczytelną odpowiedź – spróbuj ponownie.');
+    return { summary: j.summary || '', exercises: j.exercises.map((e) => ({ name: e.name, weight: typeof e.weight === 'number' ? e.weight : parseFloat(String(e.weight || '').replace(',', '.')) || null, reps: (e.reps || []).map(Number).filter((n) => n > 0), rir: e.rir ?? null, note: e.note || '' })) };
+  }
+  return { text };
+}
+
 function parseChat(raw) {
   let out = {};
   try { out = JSON.parse(raw.replace(/^```(json)?/i, '').replace(/```$/, '').trim()); }
@@ -102,7 +123,7 @@ async function directOpenAI(body, key, messages) {
   }
   const text = ((j.choices || [])[0]?.message?.content || '').trim();
   if (!text) throw new Error('AI zwróciło pustą odpowiedź – spróbuj ponownie.');
-  return body.mode === 'chat' ? parseChat(text) : { text };
+  return post(body, text);
 }
 
 async function direct(body, key) {
@@ -128,7 +149,7 @@ async function direct(body, key) {
     throw new Error(msg);
   }
   const text = (j.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('\n').trim();
-  return body.mode === 'chat' ? parseChat(text) : { text };
+  return post(body, text);
 }
 
 export async function askAI(body) {
