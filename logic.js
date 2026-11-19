@@ -266,7 +266,7 @@ export function suggestFor(plan, ex, history) {
   const last = history[history.length - 1];
   const sets = plan.sets || 3;
   if (!last) {
-    return { w: null, reps: Array(sets).fill(plan.repMax || 10), text: `Pierwszy raz: dobierz ciężar na ${plan.repMin || 8}–${plan.repMax || 12} powt. z zapasem ${plan.rir ?? 2} RIR.`, why: 'Brak historii – punkt startowy wyznacza pierwszy trening.' };
+    return { w: null, reps: Array(sets).fill(plan.repMax || 10), text: `Pierwszy raz: dobierz ciężar na ${plan.repMin || 8}–${plan.repMax || 12} powt. z zapasem ${plan.rir ?? 2}${plan.rirMax && plan.rirMax !== plan.rir ? '–' + plan.rirMax : ''} RIR.`, why: 'Brak historii – punkt startowy wyznacza pierwszy trening.' };
   }
   const w = Math.max(...last.sets.map((x) => x.w || 0));
   const top = last.sets.filter((x) => (x.w || 0) === w);

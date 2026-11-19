@@ -6,7 +6,7 @@ import * as L from './logic.js';
 import * as sync from './sync.js';
 import { TodayTab, QuickAdd } from './today.js';
 import { initFocusGuard, ReasonOverlay, FocusMiniBar } from './focus.js';
-import { TrainingTab } from './training.js';
+import { TrainingTab, migrate } from './training.js';
 import { CalendarTab } from './calendar.js';
 import { ReportsTab } from './reports.js';
 import { MoreTab } from './more.js';
@@ -78,6 +78,7 @@ async function start() {
     return;
   }
   L.seedDefaults();
+  try { migrate(); } catch (e) { console.warn(e); }
   render(html`<${App} />`, document.getElementById('app'));
   initFocusGuard();
   sync.initSync();

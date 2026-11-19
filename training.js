@@ -17,6 +17,40 @@ function findOrCreateExercise(name) {
   return db.patch('exercise', null, { name: n, perHand, increment: perHand ? 2 : 2.5 });
 }
 
+
+// ================= JEDNORAZOWE ZMIANY PLANU =================
+const GORA = [
+  ['Wyciskanie hantli na skosie', 4, 6, 10, 1, 2, 150],
+  ['Podciąganie', 2, 6, 10, 1, 2, 150],
+  ['Wiosłowanie', 2, 8, 12, 1, 2, 120],
+  ['Wznosy bokiem', 2, 12, 20, 1, 1, 90],
+  ['OHP', 2, 6, 10, 1, 2, 150],
+  ['Triceps — prostowanie na wyciągu, ramiona przy tułowiu', 2, 10, 15, 1, 1, 90],
+  ['Triceps — wyprost zza głowy, ramiona uniesione', 2, 10, 15, 1, 1, 90],
+  ['Biceps — uginanie na wyciągu', 2, 10, 15, 1, 1, 90],
+  ['Biceps — uginanie hantlami', 2, 8, 12, 1, 1, 90],
+];
+export function migrate() {
+  if (db.get('mig:gora-3x')) return;
+  const exercisesList = GORA.map(([name, sets, repMin, repMax, rir, rirMax, restSec]) => ({ exerciseId: findOrCreateExercise(name), sets, repMin, repMax, rir, rirMax, restSec }));
+  db.patch('workout', 'wk:gora', { name: 'Góra', kind: 'strength', exercises: exercisesList, order: 0 });
+  const old = ['wk:gora-a', 'wk:gora-b', 'wk:gora-c'];
+  const t = L.todayKey();
+  const sched = db.get('schedule');
+  const cur = L.scheduleVersion(t);
+  let replaced = 0;
+  if (sched && cur) {
+    const days = cur.days.map((d) => d.map((sl) => (old.includes(sl.workoutId) ? (replaced++, { ...sl, workoutId: 'wk:gora', name: 'Góra', kind: 'strength' }) : sl)));
+    if (replaced) {
+      const versions = (sched.versions || []).filter((v) => v.from < t);
+      versions.push({ from: t, days, savedAt: Date.now() });
+      db.patch('schedule', 'schedule', { versions });
+    }
+  }
+  old.forEach((id) => { const w = db.get(id); if (w && !(w.exercises || []).length) db.remove(id); });
+  db.patch('meta', 'mig:gora-3x', { at: Date.now(), replaced });
+}
+
 // ================= ZAKŁADKA TRENING =================
 export function TrainingTab() {
   useDB();
@@ -38,7 +72,7 @@ export function TrainingTab() {
         ${weekSessions.map(({ d, slots }) => html`<div class="row" style="gap:10px;align-items:flex-start">
           <div class=${'n ' + (d === t ? 'c-acc' : 'mut2')} style="width:34px;font-size:16px;padding-top:2px">${L.DOW_S[L.isoDow(d)]}</div>
           <div class="row wrap grow" style="gap:6px">
-            ${slots.length ? slots.map((sl) => { const s = L.sessionFor(d, sl.key); const st = s ? s.status : d < t ? 'miss' : null;
+            ${slots.length ? slots.map((sl) => { const s = L.sessionFor(d, sl.key); const st = s ? s.status : d < t && d >= (L.settings().startedOn || '') ? 'miss' : null;
               const col = st === 'done' ? 'var(--green)' : st === 'skipped' || st === 'miss' ? 'var(--red)' : 'var(--mut)';
               return html`<span class="chip" style=${'color:' + col}>${st === 'done' ? '✓ ' : st === 'skipped' || st === 'miss' ? '✗ ' : ''}${sl.name}</span>`; }) : html`<span class="xs mut3" style="padding-top:6px">wolne</span>`}
           </div>
@@ -236,7 +270,7 @@ function newSession(date, slotKey) {
     const hist = L.exerciseHistory(pe.exerciseId, date);
     const sug = L.suggestFor(pe, ex, hist);
     return {
-      exerciseId: pe.exerciseId, name: ex ? ex.name : '?', plan: { sets: pe.sets, repMin: pe.repMin, repMax: pe.repMax, rir: pe.rir, restSec: pe.restSec },
+      exerciseId: pe.exerciseId, name: ex ? ex.name : '?', plan: { sets: pe.sets, repMin: pe.repMin, repMax: pe.repMax, rir: pe.rir, rirMax: pe.rirMax, restSec: pe.restSec },
       sets: Array.from({ length: pe.sets || 3 }, (_, i) => ({ w: sug.w, reps: null, target: sug.reps[i] ?? null, rir: null, done: false })),
       suggestion: sug.text, why: sug.why, flag: sug.flag || null, note: '',
     };
@@ -303,7 +337,7 @@ function Workout({ id, date, slotKey }) {
     ${e ? html`
       <div class="card red">
         <div class="h" style="font-size:26px;text-transform:none;line-height:1.15">${e.name}</div>
-        <div class="small" style="color:var(--red-mut)">Plan: ${e.plan.sets} × ${e.plan.repMin}–${e.plan.repMax}${e.plan.rir != null ? ' · RIR ' + e.plan.rir : ''} · przerwa ${fmtRest(e.plan.restSec)}${exInfo && exInfo.perHand ? ' · kg na 1 hantlę' : ''}</div>
+        <div class="small" style="color:var(--red-mut)">Plan: ${e.plan.sets} × ${e.plan.repMin}–${e.plan.repMax}${e.plan.rir != null ? ' · RIR ' + e.plan.rir + (e.plan.rirMax && e.plan.rirMax !== e.plan.rir ? '–' + e.plan.rirMax : '') : ''} · przerwa ${fmtRest(e.plan.restSec)}${exInfo && exInfo.perHand ? ' · kg na 1 hantlę' : ''}</div>
         <div class="row" style="gap:8px;background:var(--red-card);border-radius:12px;padding:10px 12px">
           <span class="lbl" style="font-size:11px;color:var(--red-mut)">Poprzednio</span>
           <span style="font-weight:600">${last ? `${fmt1(Math.max(...last.sets.map((x) => x.w || 0)))} kg × ${last.sets.map((x) => x.reps).join(' / ')}` : 'pierwszy raz'}</span>
