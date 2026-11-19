@@ -2,6 +2,7 @@
 import { html, useState, useEffect, useRef, useDB, useTick, nav, toast, Icon, Check, Rating, Bar, Head, Field, Empty, Seg, NumIn, registerScreen, confirmSheet } from './ui.js';
 import * as db from './db.js';
 import * as L from './logic.js';
+import { FocusEditSheet } from './focus.js';
 
 const { fmt1, fmt0, fmtMin, fmtHM } = L;
 
@@ -230,6 +231,8 @@ function FocusCard({ date }) {
     ${running
       ? html`<button type="button" class="btn lg full b-blue" onClick=${() => nav.push('focusRun', { id: running.id })}><${Icon} n="clock" s=${18} />Sesja trwa · ${fmtHM(L.focusMin(running))} · otwórz</button>`
       : html`<button type="button" class="btn lg full b-blue" onClick=${() => nav.push('focusSetup', { date })}><${Icon} n="play" s=${16} />Start sesji ${s.focusDefaultMin} min</button>`}
+    ${list.filter((f) => f.status !== 'running').map((f) => html`<button type="button" class="row between small" style="width:100%;color:var(--blue-mut)" onClick=${() => nav.sheet(FocusEditSheet, { id: f.id })}>
+      <span>${L.hm(f.start)} · ${fmtHM(L.focusMin(f))} h · ${f.status === 'done' ? 'pełna' : 'przerwana'}${L.focusMin(f) > f.plannedMin * 1.5 ? ' ⚠' : ''}</span><span class="row" style="gap:4px"><${Icon} n="edit" s=${14} />popraw</span></button>`)}
     ${list.length ? html`<button type="button" class="xs" style="color:var(--blue-mut);align-self:flex-start" onClick=${() => nav.push('focusHistory')}>Historia sesji →</button>` : null}
   </div>`;
 }

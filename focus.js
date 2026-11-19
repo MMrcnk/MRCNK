@@ -56,7 +56,30 @@ export function initFocusGuard() {
   }
   document.addEventListener('visibilitychange', () => (document.hidden ? onHide() : onShow()));
   window.addEventListener('pagehide', onHide);
-  setInterval(beat, 4000);
+  autoClose();
+  setInterval(() => { beat(); autoClose(); }, 4000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) autoClose(); });
+}
+
+
+// ---------- automatyczne zamykanie zapomnianych sesji ----------
+const PAUSE_LIMIT_MIN = 60;
+export function autoClose() {
+  const now = Date.now();
+  db.all('focus').filter((f) => f.status === 'running').forEach((f) => {
+    if (f.pausedAt) {
+      if (now - f.pausedAt > PAUSE_LIMIT_MIN * 60000) {
+        const log = [...(f.pauseLog || [])];
+        if (log.length && !log[log.length - 1].ms) log[log.length - 1] = { ...log[log.length - 1], ms: PAUSE_LIMIT_MIN * 60000 };
+        const m = L.focusMin(f, now);
+        const full = m >= f.plannedMin - 0.5;
+        db.patch('focus', f.id, { status: full ? 'done' : 'interrupted', end: f.pausedAt, pauseLog: log, autoClosed: true, ...(full ? {} : { reason: `pauza ponad ${PAUSE_LIMIT_MIN} min – zamknięta automatycznie`, interruptedBy: 'auto' }) });
+      }
+      return;
+    }
+    const endAt = f.start + (f.pausedMs || 0) + f.plannedMin * 60000;
+    if (now >= endAt) db.patch('focus', f.id, { status: 'done', end: endAt, autoClosed: true });
+  });
 }
 
 // ---------- start sesji ----------
@@ -131,7 +154,8 @@ function FocusRun({ id }) {
   useEffect(() => { if (f && f.status === 'running') L.keepAwake(true); return () => L.keepAwake(false); }, []);
   const el = f ? L.focusMin(f, now) : 0;
   const left = f ? f.plannedMin - el : 1;
-  useEffect(() => { if (f && f.status === 'running' && left <= 0 && !hit) { setHit(true); L.beep(3, 880); toast('Cel sesji osiągnięty.'); } }, [left <= 0]);
+  useEffect(() => { if (f && f.status === 'running' && left <= 0) autoClose(); }, [left <= 0]);
+  useEffect(() => { if (f && f.status === 'done' && f.autoClosed && !hit) { setHit(true); L.beep(3, 880); toast('Sesja zakończona – czas minął.'); } }, [f && f.status]);
   if (!f) return html`<div class="page"><${Head} title="Sesja" /><${Empty}>Nie znaleziono sesji.</${Empty}></div>`;
   const tasks = (f.taskIds || []).map((x) => db.get(x)).filter(Boolean);
   const cur = tasks.find((t) => !t.done);
@@ -160,8 +184,8 @@ function FocusRun({ id }) {
   return html`<div class="page" style="min-height:100vh">
     <${Head} title="Deep Work" sub=${f.pausedAt ? 'PAUZA' : L.settings().strictExit ? 'Sesja trwa · nie wychodź z aplikacji' : 'Sesja trwa · timer liczy też poza aplikacją'} />
     <div class="card blue" style="align-items:center;text-align:center;padding:28px 16px">
-      <div class="big" style=${left <= 0 ? 'color:var(--green)' : ''}>${left > 0 ? fmtClock(left) : '+' + fmtClock(-left)}</div>
-      <div class="small" style="color:var(--blue-mut)">${left > 0 ? 'zostało' : 'ponad plan'} · upłynęło ${fmtClock(el)} z ${f.plannedMin} min</div>
+      <div class="big">${fmtClock(Math.max(0, left))}</div>
+      <div class="small" style="color:var(--blue-mut)">zostało · upłynęło ${fmtClock(el)} z ${f.plannedMin} min</div>
       <div style="width:100%"><${Bar} pct=${pct} color=${left <= 0 ? 'var(--green)' : 'var(--blue)'} bg="#1D2A3D" /></div>
     </div>
     ${cur ? html`<div class="card acc"><div class="lbl c-acc">Teraz</div><div class="h" style="font-size:26px;text-transform:none;line-height:1.2">${cur.title}</div>
@@ -174,7 +198,8 @@ function FocusRun({ id }) {
       <button type="button" class="btn lg b-ghost" onClick=${pause}><${Icon} n=${f.pausedAt ? 'play' : 'pause'} s=${18} />${f.pausedAt ? 'Wznów' : 'Pauza'}</button>
       <button type="button" class=${'btn lg ' + (left <= 0 ? 'b-green' : 'b-danger')} onClick=${finish}>${left <= 0 ? 'Zakończ ✓' : 'Przerwij'}</button>
     </div>
-    <div class="xs mut2" style="text-align:center">Wyjścia: ${(f.exits || []).length} · pauzy: ${f.pauses || 0}</div>
+    <button type="button" class="btn b-line" onClick=${() => { db.patch('focus', f.id, { plannedMin: f.plannedMin + 15 }); toast('Sesja przedłużona o 15 min'); }}><${Icon} n="plus" s=${16} />Przedłuż o 15 min</button>
+    <div class="xs mut2" style="text-align:center;line-height:1.5">Sesja kończy się sama po ${f.plannedMin} min – nawet gdy zapomnisz.<br/>Pauza dłuższa niż ${PAUSE_LIMIT_MIN} min zamyka sesję. Wyjścia: ${(f.exits || []).length} · pauzy: ${f.pauses || 0}</div>
   </div>`;
 }
 registerScreen('focusRun', FocusRun);
@@ -254,6 +279,54 @@ function FocusDone({ id }) {
 }
 registerScreen('focusDone', FocusDone);
 
+
+// ---------- edycja sesji ----------
+export function FocusEditSheet({ close, id, date }) {
+  const f = id ? db.get(id) : null;
+  const d0 = f ? f.date : date || L.todayKey();
+  const [d, setD] = useState(d0);
+  const [time, setTime] = useState(f ? L.hm(f.start) : L.nowHM());
+  const [min, setMin] = useState(f ? Math.round(L.focusMin(f)) : 90);
+  const [status, setStatus] = useState(f ? (f.status === 'interrupted' ? 'interrupted' : 'done') : 'done');
+  const [reason, setReason] = useState(f ? f.reason || '' : '');
+  const [proj, setProj] = useState(f ? f.projectId || '' : '');
+  const projects = db.all('project').filter((p) => !p.archived);
+  const running = f && f.status === 'running';
+  const save = () => {
+    const m = L.num(min);
+    if (!m || m <= 0 || m > 600) { toast('Podaj czas od 1 do 600 min'); return; }
+    if (status === 'interrupted' && !reason.trim()) { toast('Wpisz powód przerwania'); return; }
+    const [h, mm] = time.split(':').map(Number);
+    const st = L.parse(d); st.setHours(h, mm, 0, 0);
+    const start = st.getTime();
+    const fields = { date: d, start, end: start + m * 60000, pausedMs: 0, pausedAt: null, status, reason: status === 'interrupted' ? reason.trim() : null, needReason: false, projectId: proj || null, edited: Date.now() };
+    if (!f) Object.assign(fields, { plannedMin: Math.round(m), taskIds: [], doneIds: [], exits: [], manual: true, device: deviceId() });
+    else if (running) fields.plannedMin = Math.max(f.plannedMin, Math.round(m));
+    db.patch('focus', f ? f.id : null, fields);
+    L.keepAwake(false);
+    toast(f ? 'Sesja poprawiona' : 'Sesja dodana'); close();
+  };
+  return html`<div class="col">
+    <div class="grab"></div>
+    <div class="h" style="font-size:24px">${f ? 'Popraw sesję' : 'Dodaj sesję ręcznie'}</div>
+    ${running ? html`<div class="small c-amb">Ta sesja nadal trwa – zapis zakończy ją z podanym czasem.</div>` : null}
+    <div class="g2">
+      <${Field} label="Dzień"><input type="date" value=${d} onInput=${(e) => setD(e.target.value)} /></${Field}>
+      <${Field} label="Start"><input type="time" value=${time} onInput=${(e) => setTime(e.target.value)} /></${Field}>
+    </div>
+    <${Field} label="Faktyczny czas pracy (min)"><${NumIn} value=${min} onCommit=${setMin} /></${Field}>
+    <div class="g2">
+      <button type="button" class=${'btn ' + (status === 'done' ? 'b-green' : 'b-ghost')} onClick=${() => setStatus('done')}>Pełna</button>
+      <button type="button" class=${'btn ' + (status === 'interrupted' ? 'b-red' : 'b-ghost')} onClick=${() => setStatus('interrupted')}>Przerwana</button>
+    </div>
+    ${status === 'interrupted' ? html`<input placeholder="Powód przerwania" value=${reason} onInput=${(e) => setReason(e.target.value)} />` : null}
+    ${projects.length ? html`<select value=${proj} onChange=${(e) => setProj(e.target.value)}><option value="">— bez projektu —</option>${projects.map((p) => html`<option value=${p.id}>${p.name}</option>`)}</select>` : null}
+    ${!f || f.manual ? html`<div class="xs mut2">Sesja dodana ręcznie liczy się do czasu pracy, ale nie odhacza zasady 2 dekalogu (brak rozpisanych zadań).</div>` : null}
+    <button type="button" class="btn lg full b-blue" onClick=${save}>Zapisz</button>
+    ${f ? html`<button type="button" class="btn b-danger" onClick=${() => { db.remove(f.id); L.keepAwake(false); close(); toast('Sesja usunięta'); }}><${Icon} n="trash" s=${18} />Usuń sesję</button>` : null}
+  </div>`;
+}
+
 // ---------- historia ----------
 function FocusHistory() {
   useDB();
@@ -275,16 +348,20 @@ function FocusHistory() {
     </div>
     ${Object.keys(byProj).length ? html`<div class="card" style="gap:6px"><div class="lbl mut">Projekty w tym miesiącu</div>
       ${Object.entries(byProj).sort((a, b) => b[1] - a[1]).map(([n, m]) => html`<div class="row between"><span>${n}</span><span class="n" style="font-size:18px">${fmtHM(m)} h</span></div>`)}</div>` : null}
+    <button type="button" class="btn b-ghost" onClick=${() => nav.sheet(FocusEditSheet, { date: t })}><${Icon} n="plus" s=${18} />Dodaj sesję ręcznie</button>
+    <div class="xs mut2" style="text-align:center">Tapnij sesję, żeby poprawić czas, status albo ją usunąć.</div>
     <div class="card" style="gap:0">
-      ${all.length ? all.slice(0, 200).map((f) => html`<div class="li" style="align-items:flex-start;padding:10px 0">
+      ${all.length ? all.slice(0, 200).map((f) => html`<button type="button" class="li" style="width:100%;text-align:left;align-items:flex-start;padding:10px 0" onClick=${() => nav.sheet(FocusEditSheet, { id: f.id })}>
         <div class="col grow" style="gap:2px">
           <div style="font-weight:600">${L.fmtShort(f.date)} · ${L.hm(f.start)} · ${fmt0(L.focusMin(f))} / ${f.plannedMin} min</div>
           <div class="xs mut">${(f.taskIds || []).length} zadań · zrobione ${(f.doneIds || []).length}${f.projectId ? ' · ' + (db.get(f.projectId)?.name || '') : ''}${(f.exits || []).length ? ' · wyjścia ' + f.exits.length : ''}</div>
           ${(f.pauseLog || []).length ? html`<div class="xs c-amb">Pauzy: ${f.pauseLog.map((p) => p.reason + (p.ms ? ' (' + Math.max(1, Math.round(p.ms / 60000)) + ' min)' : '')).join(', ')}</div>` : null}
           ${f.status === 'interrupted' ? html`<div class="xs c-red">Przerwana${f.interruptedBy === 'exit' ? ' (wyjście z aplikacji)' : ''}: ${f.reason || 'brak powodu'}</div>` : null}
+          ${L.focusMin(f) > f.plannedMin * 1.5 ? html`<div class="xs c-amb">⚠ Sesja dłuższa niż plan – sprawdź i popraw czas</div>` : null}
+          ${f.manual ? html`<div class="xs mut2">dodana ręcznie</div>` : f.edited ? html`<div class="xs mut2">poprawiona ręcznie</div>` : f.autoClosed ? html`<div class="xs mut2">zamknięta automatycznie</div>` : null}
         </div>
         <span class="chip" style=${f.status === 'done' ? 'color:var(--green)' : 'color:var(--red)'}>${f.status === 'done' ? 'pełna' : 'przerwana'}</span>
-      </div>`) : html`<${Empty}>Jeszcze brak sesji.</${Empty}>`}
+      </button>`) : html`<${Empty}>Jeszcze brak sesji.</${Empty}>`}
     </div>
   </div>`;
 }
