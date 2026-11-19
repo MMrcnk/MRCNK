@@ -4,10 +4,10 @@ import * as db from './db.js';
 import * as L from './logic.js';
 import * as sync from './sync.js';
 import { deviceId } from './focus.js';
-import { aiKey, aiModel, askAI, aiProvider, DEFAULT_MODEL } from './ai.js';
+import { aiKey, aiModel, askAI, aiProvider, DEFAULT_MODEL, userPrompt } from './ai.js';
 
 const { fmt1, fmt0 } = L;
-export const APP_VERSION = '11';
+export const APP_VERSION = '12';
 export const VAPID_PUBLIC_DEFAULT = 'BGU7QEoTnv3OuK2L6q7h-OIr1oCrUyNH0vJPp2U6IIx_co5tbJRHMxmnYJan7n_Rl6Q2KC9f_7XSYM3IYKxvqV0';
 
 export function MoreTab() {
@@ -429,6 +429,25 @@ registerScreen('syncScreen', SyncScreen);
 
 
 // ================= AI =================
+function PromptCard() {
+  useDB();
+  const [txt, setTxt] = useState(userPrompt());
+  const saved = userPrompt();
+  const dirty = txt.trim() !== saved;
+  const loadFile = async (e) => { const f = e.target.files[0]; if (!f) return; setTxt(await f.text()); e.target.value = ''; };
+  return html`<div class="card">
+    <div class="ctitle">Twój prompt dla AI</div>
+    <div class="small mut" style="line-height:1.5">Instrukcje, które AI dostaje przy każdej analizie i w chacie: kim jesteś, Twoje cele, plan, jak ma odpowiadać. Zapisują się w Twoich danych (nie w kodzie aplikacji na GitHubie).</div>
+    <textarea style="min-height:220px;font-size:14px" placeholder="Wklej tutaj swój prompt…" value=${txt} onInput=${(e) => setTxt(e.target.value)}></textarea>
+    <div class="row between xs mut2"><span>${txt.length.toLocaleString('pl-PL')} znaków${saved ? ' · zapisany' : ''}</span>
+      <label class="chip" style="cursor:pointer">Wczytaj z pliku<input type="file" accept=".txt,.md,text/plain" style="display:none" onChange=${loadFile} /></label></div>
+    <div class="g2">
+      <button type="button" class="btn b-acc" disabled=${!dirty} onClick=${() => { L.setSettings({ aiPrompt: txt.trim() }); toast('Prompt zapisany'); }}>Zapisz prompt</button>
+      <button type="button" class="btn b-ghost" disabled=${!saved && !txt} onClick=${() => confirmSheet('Usunąć prompt? AI wróci do domyślnych instrukcji.', () => { L.setSettings({ aiPrompt: '' }); setTxt(''); }, 'Usuń')}>Usuń</button>
+    </div>
+  </div>`;
+}
+
 function AiSettings() {
   const [key, setKey] = useState(aiKey());
   const [model, setModel] = useState(localStorage.getItem('mrcnk_ai_model') || '');
@@ -451,6 +470,7 @@ function AiSettings() {
       ${key ? html`<button type="button" class="small mut" onClick=${() => { localStorage.removeItem('mrcnk_ai_key'); setKey(''); toast('Klucz usunięty'); }}>Usuń klucz z tego urządzenia</button>` : null}
       <div class="xs mut2" style="line-height:1.5">Klucz zostaje tylko na tym urządzeniu (nie trafia do GitHuba ani do synchronizacji). Na komputerze wpisz go osobno. API jest płatne osobno od abonamentu ChatGPT Plus/Pro.</div>
     </div>
+    <${PromptCard} />
     <div class="card">
       <div class="ctitle">Gdzie działa AI</div>
       <div class="small" style="line-height:1.6">• <b>Karta dnia</b> (po wieczornym podsumowaniu) → „Analizuj dzień”<br/>• <b>Raporty</b> → Tydzień / Miesiąc → „Analizuj”<br/>• <b>Chat</b> (dymek w rogu) – pytania o dane, notatki, zmiany</div>
