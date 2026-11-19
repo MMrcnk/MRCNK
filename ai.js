@@ -2,7 +2,9 @@
 import * as sync from './sync.js';
 
 export const aiKey = () => localStorage.getItem('mrcnk_ai_key') || '';
-export const aiModel = () => localStorage.getItem('mrcnk_ai_model') || 'claude-sonnet-5-5';
+export const aiProvider = (key = aiKey()) => (key.startsWith('sk-ant-') ? 'anthropic' : key ? 'openai' : null);
+export const DEFAULT_MODEL = { anthropic: 'claude-sonnet-5-5', openai: 'gpt-6.1-terra' };
+export const aiModel = () => localStorage.getItem('mrcnk_ai_model') || DEFAULT_MODEL[aiProvider()] || '';
 export const aiReady = () => !!aiKey() || !!sync.getUser();
 
 const RULES = `Zasady:
@@ -62,12 +64,35 @@ function parseChat(raw) {
   return { reply: out.reply || '', actions: Array.isArray(out.actions) ? out.actions : [] };
 }
 
+async function directOpenAI(body, key, messages) {
+  let r;
+  try {
+    r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + key, 'content-type': 'application/json' },
+      body: JSON.stringify({ model: aiModel(), max_completion_tokens: 6000, messages: [{ role: 'system', content: system(body) }, ...messages] }),
+    });
+  } catch { throw new Error('Brak połączenia z AI (internet?).'); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const msg = j?.error?.message || 'Błąd AI ' + r.status;
+    if (r.status === 401) throw new Error('Nieprawidłowy klucz OpenAI – sprawdź w Więcej → AI.');
+    if (r.status === 429 && /quota|billing/i.test(msg)) throw new Error('Brak środków na koncie OpenAI (Billing).');
+    if (/model/i.test(msg) && r.status === 404) throw new Error('Model „' + aiModel() + '” niedostępny – zmień nazwę modelu w Więcej → AI.');
+    throw new Error(msg);
+  }
+  const text = ((j.choices || [])[0]?.message?.content || '').trim();
+  if (!text) throw new Error('AI zwróciło pustą odpowiedź – spróbuj ponownie.');
+  return body.mode === 'chat' ? parseChat(text) : { text };
+}
+
 async function direct(body, key) {
   let messages;
   if (body.mode === 'chat') {
     messages = (body.messages || []).filter((m) => m.content).slice(-16);
     while (messages.length && messages[0].role !== 'user') messages.shift();
   } else messages = [{ role: 'user', content: 'Dane (JSON):\n' + JSON.stringify(body) }];
+  if (aiProvider(key) === 'openai') return directOpenAI(body, key, messages);
   let r;
   try {
     r = await fetch('https://api.anthropic.com/v1/messages', {

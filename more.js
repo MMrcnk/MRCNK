@@ -4,10 +4,10 @@ import * as db from './db.js';
 import * as L from './logic.js';
 import * as sync from './sync.js';
 import { deviceId } from './focus.js';
-import { aiKey, aiModel, askAI } from './ai.js';
+import { aiKey, aiModel, askAI, aiProvider, DEFAULT_MODEL } from './ai.js';
 
 const { fmt1, fmt0 } = L;
-export const APP_VERSION = '10';
+export const APP_VERSION = '11';
 export const VAPID_PUBLIC_DEFAULT = 'BGU7QEoTnv3OuK2L6q7h-OIr1oCrUyNH0vJPp2U6IIx_co5tbJRHMxmnYJan7n_Rl6Q2KC9f_7XSYM3IYKxvqV0';
 
 export function MoreTab() {
@@ -431,20 +431,25 @@ registerScreen('syncScreen', SyncScreen);
 // ================= AI =================
 function AiSettings() {
   const [key, setKey] = useState(aiKey());
-  const [model, setModel] = useState(aiModel());
+  const [model, setModel] = useState(localStorage.getItem('mrcnk_ai_model') || '');
   const [busy, setBusy] = useState(false);
-  const save = () => { localStorage.setItem('mrcnk_ai_key', key.trim()); localStorage.setItem('mrcnk_ai_model', model.trim() || 'claude-sonnet-5-5'); toast('Zapisano'); };
+  const prov = aiProvider(key.trim());
+  const save = () => { localStorage.setItem('mrcnk_ai_key', key.trim()); if (model.trim()) localStorage.setItem('mrcnk_ai_model', model.trim()); else localStorage.removeItem('mrcnk_ai_model'); toast('Zapisano'); };
   const test = async () => { save(); setBusy(true); try { const r = await askAI({ mode: 'chat', messages: [{ role: 'user', content: 'Test połączenia. Odpowiedz jednym zdaniem.' }], context: { today: L.todayKey() } }); toast('Działa: ' + (r.reply || 'OK').slice(0, 80)); } catch (e) { toast(e.message); } setBusy(false); };
   return html`<div class="page">
     <${Head} title="AI" sub="Analiza dnia, raporty, chat" />
     <div class="card">
-      <div class="ctitle">Klucz API</div>
-      <div class="small mut" style="line-height:1.5">1. Wejdź na <b>console.anthropic.com</b> i załóż konto<br/>2. <b>Billing</b> → doładuj (np. 5 $)<br/>3. <b>API Keys → Create Key</b> → skopiuj klucz <b>sk-ant-…</b><br/>4. Wklej poniżej i kliknij Test</div>
-      <${Field} label="Klucz Anthropic"><input type="password" autocomplete="off" placeholder="sk-ant-…" value=${key} onInput=${(e) => setKey(e.target.value)} /></${Field}>
-      <${Field} label="Model"><input value=${model} onInput=${(e) => setModel(e.target.value)} /></${Field}>
+      <div class="ctitle">ChatGPT (OpenAI)</div>
+      <div class="small mut" style="line-height:1.5">1. <b>platform.openai.com</b> → zaloguj się (to samo konto co ChatGPT)<br/>2. <b>Settings → Billing</b> → dodaj kartę i doładuj (np. 5 $)<br/>3. <b>API keys → Create new secret key</b> → skopiuj klucz <b>sk-…</b><br/>4. Wklej poniżej → Test</div>
+      <div class="xs mut2">Klucz Claude (sk-ant-…) też zadziała – aplikacja rozpozna go sama.</div>
+    </div>
+    <div class="card">
+      <${Field} label="Klucz API"><input type="password" autocomplete="off" placeholder="sk-…" value=${key} onInput=${(e) => setKey(e.target.value)} /></${Field}>
+      ${prov ? html`<div class="small">Dostawca: <b>${prov === 'openai' ? 'OpenAI (ChatGPT)' : 'Anthropic (Claude)'}</b></div>` : null}
+      <${Field} label="Model (opcjonalnie)" hint=${'Puste = ' + (prov ? DEFAULT_MODEL[prov] : 'domyślny')}><input value=${model} placeholder=${prov ? DEFAULT_MODEL[prov] : ''} onInput=${(e) => setModel(e.target.value)} /></${Field}>
       <div class="g2"><button type="button" class="btn b-acc" onClick=${save}>Zapisz</button><button type="button" class="btn b-ghost" disabled=${busy || !key.trim()} onClick=${test}>${busy ? 'Testuję…' : 'Test'}</button></div>
       ${key ? html`<button type="button" class="small mut" onClick=${() => { localStorage.removeItem('mrcnk_ai_key'); setKey(''); toast('Klucz usunięty'); }}>Usuń klucz z tego urządzenia</button>` : null}
-      <div class="xs mut2" style="line-height:1.5">Klucz zostaje tylko na tym urządzeniu (nie trafia do GitHuba ani do synchronizacji). Na komputerze wpisz go osobno. Płacisz za użycie – jedna analiza to ułamki centa.</div>
+      <div class="xs mut2" style="line-height:1.5">Klucz zostaje tylko na tym urządzeniu (nie trafia do GitHuba ani do synchronizacji). Na komputerze wpisz go osobno. API jest płatne osobno od abonamentu ChatGPT Plus/Pro.</div>
     </div>
     <div class="card">
       <div class="ctitle">Gdzie działa AI</div>

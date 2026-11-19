@@ -1,5 +1,5 @@
 // MRCNK – service worker: offline + powiadomienia push
-const CACHE = 'mrcnk-v10';
+const CACHE = 'mrcnk-v11';
 const FILES = [
   './', 'index.html', 'styles.css', 'manifest.json', 'app.js', 'ui.js', 'db.js', 'sync.js', 'logic.js', 'today.js', 'focus.js', 'training.js', 'calendar.js', 'reports.js', 'more.js', 'chat.js', 'ai.js', 'lockscreen.js',
   'preact.js', 'supabase.js', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png',
